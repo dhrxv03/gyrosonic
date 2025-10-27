@@ -1,14 +1,13 @@
 let permissionGranted = false;
 let cx, cy;
-let vx = 0, vy = 0;      // velocity
+let vx = 0, vy = 0;      
 let btn, hint;
 let ballColor, bgColor;
 let ballSize = 80;
 
-// physics params (tweak to taste)
 const accel = 0.15;      // how much tilt adds to velocity
-const damping = 0.985;   // friction each frame
-const restitution = 0.75;// bounce energy: 1 = full, <1 = loses energy
+const damping = 0.9;   // friction each frame
+const restitution = 0.75;   // bounce energy
 
 // debounce for color swap
 let lastEdgeToggleAt = 0;
@@ -66,11 +65,10 @@ function draw() {
     return;
   }
 
-  // Use tilt to accelerate the ball; small deadzone for steadiness
+  // Ball and device tilt mostion physics
   const dx = constrain(rotationY || 0, -3, 3);
   const dy = constrain(rotationX || 0, -3, 3);
 
-  // add acceleration from tilt
   vx += dx * accel;
   vy += dy * accel;
 
@@ -106,7 +104,7 @@ function draw() {
     if (vy > 0) { vy = -vy * restitution; collided = true; }
   }
 
-  // swap colors once per collision burst
+  // Swap colors on edge collision 
   if (collided && millis() - lastEdgeToggleAt > edgeCooldownMs) {
     const tmp = ballColor;
     ballColor = bgColor;
