@@ -1,12 +1,18 @@
 let permissionGranted = false;
 let cx, cy;
+let vx = 0, vy = 0;      // velocity
 let btn, hint;
 let ballColor, bgColor;
-let ballSize = 80; // smaller ball
+let ballSize = 80;
 
-// debounce
+// physics params (tweak to taste)
+const accel = 0.15;      // how much tilt adds to velocity
+const damping = 0.985;   // friction each frame
+const restitution = 0.75;// bounce energy: 1 = full, <1 = loses energy
+
+// debounce for color swap
 let lastEdgeToggleAt = 0;
-const edgeCooldownMs = 400; // minimum time between toggles
+const edgeCooldownMs = 400;
 
 function setup() {
   createCanvas(windowWidth, windowHeight);
@@ -60,35 +66,52 @@ function draw() {
     return;
   }
 
-  // tilt movement
+  // Use tilt to accelerate the ball; small deadzone for steadiness
   const dx = constrain(rotationY || 0, -3, 3);
   const dy = constrain(rotationX || 0, -3, 3);
-  cx += dx * 2;
-  cy += dy * 2;
 
-  // bounds (allow touching, but keep within canvas)
+  // add acceleration from tilt
+  vx += dx * accel;
+  vy += dy * accel;
+
+  // apply damping/friction
+  vx *= damping;
+  vy *= damping;
+
+  // update position
+  cx += vx;
+  cy += vy;
+
   const r = ballSize / 2;
-  cx = constrain(cx, r, width - r);
-  cy = constrain(cy, r, height - r);
+  let collided = false;
 
-  // edge detection (touching edge if center == r or width-r/height-r after constrain)
-  const touchingEdge = (cx === r) || (cx === width - r) || (cy === r) || (cy === height - r);
+  // left edge
+  if (cx < r) {
+    cx = r;
+    if (vx < 0) { vx = -vx * restitution; collided = true; }
+  }
+  // right edge
+  if (cx > width - r) {
+    cx = width - r;
+    if (vx > 0) { vx = -vx * restitution; collided = true; }
+  }
+  // top edge
+  if (cy < r) {
+    cy = r;
+    if (vy < 0) { vy = -vy * restitution; collided = true; }
+  }
+  // bottom edge
+  if (cy > height - r) {
+    cy = height - r;
+    if (vy > 0) { vy = -vy * restitution; collided = true; }
+  }
 
-  // debounce: only toggle if cooldown has passed
-  if (touchingEdge && millis() - lastEdgeToggleAt > edgeCooldownMs) {
-    // swap colors
+  // swap colors once per collision burst
+  if (collided && millis() - lastEdgeToggleAt > edgeCooldownMs) {
     const tmp = ballColor;
     ballColor = bgColor;
     bgColor = tmp;
-
     lastEdgeToggleAt = millis();
-
-    // nudge inward so we don't re-trigger due to tiny jitters
-    const nudge = 2;
-    if (cx === r) cx += nudge;
-    if (cx === width - r) cx -= nudge;
-    if (cy === r) cy += nudge;
-    if (cy === height - r) cy -= nudge;
   }
 
   noStroke();
