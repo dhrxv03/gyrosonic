@@ -4,6 +4,10 @@ let btn, hint;
 let ballColor, bgColor;
 let ballSize = 80; // smaller ball
 
+// debounce
+let lastEdgeToggleAt = 0;
+const edgeCooldownMs = 400; // minimum time between toggles
+
 function setup() {
   createCanvas(windowWidth, windowHeight);
   cx = width / 2;
@@ -59,21 +63,32 @@ function draw() {
   // tilt movement
   const dx = constrain(rotationY || 0, -3, 3);
   const dy = constrain(rotationX || 0, -3, 3);
-  cx = constrain(cx + dx * 2, 0, width);
-  cy = constrain(cy + dy * 2, 0, height);
+  cx += dx * 2;
+  cy += dy * 2;
 
-  // edge detection
-  const hitEdge =
-    cx - ballSize / 2 <= 0 ||
-    cx + ballSize / 2 >= width ||
-    cy - ballSize / 2 <= 0 ||
-    cy + ballSize / 2 >= height;
+  // bounds (allow touching, but keep within canvas)
+  const r = ballSize / 2;
+  cx = constrain(cx, r, width - r);
+  cy = constrain(cy, r, height - r);
 
-  if (hitEdge) {
+  // edge detection (touching edge if center == r or width-r/height-r after constrain)
+  const touchingEdge = (cx === r) || (cx === width - r) || (cy === r) || (cy === height - r);
+
+  // debounce: only toggle if cooldown has passed
+  if (touchingEdge && millis() - lastEdgeToggleAt > edgeCooldownMs) {
     // swap colors
-    const temp = ballColor;
+    const tmp = ballColor;
     ballColor = bgColor;
-    bgColor = temp;
+    bgColor = tmp;
+
+    lastEdgeToggleAt = millis();
+
+    // nudge inward so we don't re-trigger due to tiny jitters
+    const nudge = 2;
+    if (cx === r) cx += nudge;
+    if (cx === width - r) cx -= nudge;
+    if (cy === r) cy += nudge;
+    if (cy === height - r) cy -= nudge;
   }
 
   noStroke();
