@@ -6,7 +6,7 @@ let ballColor, bgColor;
 let ballSize = 80;
 
 const accel = 0.15;      // how much tilt adds to velocity
-const damping = 0.9;   // friction each frame
+const damping = 0.985;   // friction each frame
 const restitution = 0.75;   // bounce energy
 
 // debounce for color swap
