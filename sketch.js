@@ -1,12 +1,15 @@
 let permissionGranted = false;
 let cx, cy;
 let btn, hint;
+let ballColor, bgColor;
+let ballSize = 80; // smaller ball
 
 function setup() {
   createCanvas(windowWidth, windowHeight);
-
   cx = width / 2;
   cy = height / 2;
+  ballColor = color(0);
+  bgColor = color(255);
 
   btn = document.getElementById("btn");
   hint = document.getElementById("hint");
@@ -20,14 +23,12 @@ function setup() {
     hint.hidden = false;
     btn.addEventListener("click", requestAccess, { once: true });
   } else {
-    // Non-iOS or older browsers
     permissionGranted = true;
   }
 }
 
 async function requestAccess() {
   try {
-    // Request both; some iOS builds gate data behind either.
     const o = await DeviceOrientationEvent.requestPermission();
     let m = "granted";
     if (
@@ -48,23 +49,36 @@ async function requestAccess() {
 }
 
 function draw() {
-  background(255);
+  background(bgColor);
 
   if (!permissionGranted) {
-    // Draw a subtle cue under the button area
     noFill(); stroke(0); rect(16, 16, 240, 60, 12);
     return;
   }
 
-  // p5 updates rotationX/Y after permissions granted
-  const dx = constrain((rotationY || 0), -3, 3);
-  const dy = constrain((rotationX || 0), -3, 3);
-
+  // tilt movement
+  const dx = constrain(rotationY || 0, -3, 3);
+  const dy = constrain(rotationX || 0, -3, 3);
   cx = constrain(cx + dx * 2, 0, width);
   cy = constrain(cy + dy * 2, 0, height);
 
-  noStroke(); fill(0);
-  ellipse(cx, cy, 200, 200);
+  // edge detection
+  const hitEdge =
+    cx - ballSize / 2 <= 0 ||
+    cx + ballSize / 2 >= width ||
+    cy - ballSize / 2 <= 0 ||
+    cy + ballSize / 2 >= height;
+
+  if (hitEdge) {
+    // swap colors
+    const temp = ballColor;
+    ballColor = bgColor;
+    bgColor = temp;
+  }
+
+  noStroke();
+  fill(ballColor);
+  ellipse(cx, cy, ballSize);
 }
 
 function windowResized() {
