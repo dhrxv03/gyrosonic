@@ -13,15 +13,13 @@ const restitution = 0.75;
 
 // debounce for collision color/sound
 let lastEdgeAt = 0;
-const edgeCooldownMs = 300;
+const edgeCooldownMs = 220;
 
 // audio
-let collisionSound = null;
-let osc = null;     // fallback oscillator
-let env = null;
-let soundReady = false;
+let samples = [];          // holds loaded p5.SoundFile objects (A–N)
+let audioReady = false;
 
-let enableBtn, testBtn, hintEl;
+let enableBtn, hintEl;
 
 function setup() {
   createCanvas(windowWidth, windowHeight);
@@ -31,33 +29,19 @@ function setup() {
   ballColor = color(0);
   bgColor = color(255);
 
-  enableBtn = document.getElementById("enableBtn");
-  testBtn   = document.getElementById("testBtn");
+  enableBtn = document.getElementById("enableBtn") || document.getElementById("btn");
   hintEl    = document.getElementById("hint");
 
-  enableBtn.addEventListener("click", onEnableClicked, { once: true });
-  testBtn.addEventListener("click", onTestSound);
-
-  // prepare fallback oscillator (silent until triggered)
-  osc = new p5.Oscillator("sine");
-  env = new p5.Envelope();
-  env.setADSR(0.005, 0.05, 0.0, 0.05);   // short blip
-  env.setRange(0.4, 0.0);                // peak amp 0.4
-  osc.freq(880);                         // A5 beep
-  osc.start();
-  osc.amp(0);
+  // Fallback: if your page uses the older "btn" id
+  if (enableBtn) enableBtn.addEventListener("click", onEnableClicked, { once: true });
 }
 
 async function onEnableClicked() {
-  // Unlock audio first
+  // Unlock audio (must be in a user gesture)
   try {
-    if (typeof userStartAudio === "function") {
-      await userStartAudio();
-    }
+    if (typeof userStartAudio === "function") await userStartAudio();
     const ac = getAudioContext();
-    if (ac && ac.state !== "running") {
-      await ac.resume();
-    }
+    if (ac && ac.state !== "running") await ac.resume();
     masterVolume(1.0);
   } catch (_) {}
 
@@ -73,47 +57,33 @@ async function onEnableClicked() {
     }
   } catch (_) {}
 
-  // Load the sound (CASE-SENSITIVE)
-  try {
+  // Load samples A–N (CASE-SENSITIVE)
+  const letters = "ABCDEFGHIJKLMN".split("");
+  let loadedCount = 0;
+
+  letters.forEach((L, i) => {
     loadSound(
-      "assets/A.mp3",
+      `assets/${L}.mp3`,
       (s) => {
-        collisionSound = s;
-        collisionSound.playMode("restart");
-        collisionSound.setVolume(0.9);
-        soundReady = true;
-        testBtn.disabled = false;
-        if (hintEl) hintEl.textContent = "Sound loaded. Tap ‘Test sound’ or just tilt.";
+        s.playMode("restart");
+        s.setVolume(0.85);   // base volume (we'll adjust pitch via rate)
+        samples[i] = s;
+        loadedCount++;
+        if (loadedCount === letters.length) {
+          audioReady = true;
+          if (hintEl) hintEl.textContent = "Sound ready. Tilt to bounce (turn off Silent mode).";
+        }
       },
       () => {
-        // load failed, keep fallback
-        soundReady = false;
-        testBtn.disabled = false; // allow test of fallback beep
-        if (hintEl) hintEl.textContent = "Sound failed to load (check path). Fallback beep enabled.";
+        // ignore one-off failures; still usable if others load
       }
     );
-  } catch (_) {
-    soundReady = false;
-    testBtn.disabled = false;
-  }
+  });
 
   permissionGranted = true;
-  enableBtn.disabled = true;
-}
-
-async function onTestSound() {
-  // Make sure context is running
-  try {
-    const ac = getAudioContext();
-    if (ac && ac.state !== "running") await ac.resume();
-  } catch (_) {}
-
-  if (soundReady && collisionSound && collisionSound.isLoaded()) {
-    collisionSound.play();
-  } else {
-    // fallback beep
-    osc.amp(0); // reset
-    env.play(osc);
+  if (enableBtn) enableBtn.hidden = true;
+  if (hintEl && !audioReady) {
+    hintEl.textContent = "Loading sounds… If you hear nothing, turn off Silent mode & raise volume.";
   }
 }
 
@@ -140,30 +110,33 @@ function draw() {
 
   const r = ballSize / 2;
   let collided = false;
+  let impactSpeed = Math.hypot(vx, vy); // speed BEFORE bounce change
 
-  if (cx < r) { cx = r; if (vx < 0) { vx = -vx * restitution; collided = true; } }
-  if (cx > width - r) { cx = width - r; if (vx > 0) { vx = -vx * restitution; collided = true; } }
-  if (cy < r) { cy = r; if (vy < 0) { vy = -vy * restitution; collided = true; } }
-  if (cy > height - r) { cy = height - r; if (vy > 0) { vy = -vy * restitution; collided = true; } }
+  // walls + bounce
+  if (cx < r) {
+    cx = r;
+    if (vx < 0) { collided = true; vx = -vx * restitution; }
+  }
+  if (cx > width - r) {
+    cx = width - r;
+    if (vx > 0) { collided = true; vx = -vx * restitution; }
+  }
+  if (cy < r) {
+    cy = r;
+    if (vy < 0) { collided = true; vy = -vy * restitution; }
+  }
+  if (cy > height - r) {
+    cy = height - r;
+    if (vy > 0) { collided = true; vy = -vy * restitution; }
+  }
 
   if (collided && millis() - lastEdgeAt > edgeCooldownMs) {
     // swap colors
     const tmp = ballColor; ballColor = bgColor; bgColor = tmp;
     lastEdgeAt = millis();
 
-    // ensure AudioContext is running (iOS can suspend randomly)
-    try {
-      const ac = getAudioContext();
-      if (ac && ac.state !== "running") { ac.resume(); }
-    } catch (_) {}
-
-    // play sound or fallback beep
-    if (soundReady && collisionSound && collisionSound.isLoaded()) {
-      collisionSound.play();
-    } else {
-      osc.amp(0);
-      env.play(osc);
-    }
+    // play pitched sound based on impact speed
+    playPitchedCollision(impactSpeed);
   }
 
   noStroke();
@@ -173,4 +146,36 @@ function draw() {
 
 function windowResized() {
   resizeCanvas(windowWidth, windowHeight);
+}
+
+/**
+ * Map a collision speed to a playback rate and play a random sample.
+ * - You can tweak speedRangeMin/Max and rateMin/Max to taste.
+ */
+function playPitchedCollision(speed) {
+  if (!audioReady || samples.length === 0) return;
+
+  // Typical speeds given accel/damping are ~0..15; tune these after testing
+  const speedRangeMin = 1.5;   // very soft tap
+  const speedRangeMax = 12.0;  // very hard hit
+
+  // Pitch range: 0.75 = lower, 1.0 = normal, 1.6 = higher
+  const rateMin = 0.75;
+  const rateMax = 1.6;
+
+  // Map speed -> rate with clamping
+  const t = constrain((speed - speedRangeMin) / (speedRangeMax - speedRangeMin), 0, 1);
+  const rate = lerp(rateMin, rateMax, t);
+
+  // Random sample for timbral variety
+  const s = random(samples);
+  if (s && s.isLoaded()) {
+    try {
+      const ac = getAudioContext();
+      if (ac && ac.state !== "running") ac.resume();
+    } catch (_) {}
+
+    s.rate(rate);
+    s.play(); // restart mode avoids overlap build-up
+  }
 }
