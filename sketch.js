@@ -54,6 +54,17 @@ async function requestAccess() {
       m = await DeviceMotionEvent.requestPermission();
     }
     if (o === "granted" || m === "granted") permissionGranted = true;
+
+    // unlock/resume WebAudio on the user gesture so collisionSound.play() works on iOS
+    try {
+      if (typeof userStartAudio === "function") {
+        await userStartAudio();
+      } else if (typeof getAudioContext === "function" && getAudioContext().state === "suspended") {
+        await getAudioContext().resume();
+      }
+    } catch (e) {
+      // ignore audio resume failures
+    }
   } finally {
     btn.hidden = true;
     hint.hidden = true;
