@@ -55,7 +55,7 @@ async function requestAccess() {
       await userStartAudio(); // required on iOS before creating/playing audio
     }
     loadSound(
-      "assets/a.mp3",
+      "assets/A.mp3",
       (s) => {
         collisionSound = s;
         // ensure quick replays per edge-hit
