@@ -1,17 +1,42 @@
 let permissionGranted = false;
 let cx, cy;
-let vx = 0, vy = 0;      
+let vx = 0, vy = 0;          // velocity
 let btn, hint;
 let ballColor, bgColor;
 let ballSize = 80;
 
-const accel = 0.15;      // how much tilt adds to velocity
-const damping = 0.985;   // friction each frame
-const restitution = 0.75;   // bounce energy
+// physics
+const accel = 0.15;
+const damping = 0.985;
+const restitution = 0.75;
 
-// debounce for color swap
+// debounce for color/haptic on edge hits
 let lastEdgeToggleAt = 0;
 const edgeCooldownMs = 400;
+
+// --- NEW: hidden switch for iOS haptic ---
+let hapticSwitch;
+function setupHapticSwitch() {
+  hapticSwitch = document.createElement("input");
+  hapticSwitch.type = "checkbox";
+  hapticSwitch.setAttribute("role", "switch");
+  // keep in DOM but off-screen (display:none can suppress effects)
+  hapticSwitch.style.position = "absolute";
+  hapticSwitch.style.left = "-9999px";
+  document.body.appendChild(hapticSwitch);
+}
+function triggerHaptic() {
+  // Android / supported browsers
+  if ("vibrate" in navigator) {
+    navigator.vibrate(20);
+    return;
+  }
+  // iOS Safari workaround: toggle native switch (Safari 17.4+ haptic)
+  if (hapticSwitch) {
+    hapticSwitch.checked = !hapticSwitch.checked;
+  }
+}
+// --- end NEW ---
 
 function setup() {
   createCanvas(windowWidth, windowHeight);
@@ -19,6 +44,8 @@ function setup() {
   cy = height / 2;
   ballColor = color(0);
   bgColor = color(255);
+
+  setupHapticSwitch(); // NEW
 
   btn = document.getElementById("btn");
   hint = document.getElementById("hint");
@@ -46,11 +73,7 @@ async function requestAccess() {
     ) {
       m = await DeviceMotionEvent.requestPermission();
     }
-    if (o === "granted" || m === "granted") {
-      permissionGranted = true;
-    }
-  } catch (e) {
-    // console.error(e);
+    if (o === "granted" || m === "granted") permissionGranted = true;
   } finally {
     btn.hidden = true;
     hint.hidden = true;
@@ -65,50 +88,38 @@ function draw() {
     return;
   }
 
-  // Ball and device tilt mostion physics
+  // tilt → acceleration
   const dx = constrain(rotationY || 0, -3, 3);
   const dy = constrain(rotationX || 0, -3, 3);
-
   vx += dx * accel;
   vy += dy * accel;
 
-  // apply damping/friction
+  // damping
   vx *= damping;
   vy *= damping;
 
-  // update position
+  // integrate
   cx += vx;
   cy += vy;
 
   const r = ballSize / 2;
   let collided = false;
 
-  // left edge
-  if (cx < r) {
-    cx = r;
-    if (vx < 0) { vx = -vx * restitution; collided = true; }
-  }
-  // right edge
-  if (cx > width - r) {
-    cx = width - r;
-    if (vx > 0) { vx = -vx * restitution; collided = true; }
-  }
-  // top edge
-  if (cy < r) {
-    cy = r;
-    if (vy < 0) { vy = -vy * restitution; collided = true; }
-  }
-  // bottom edge
-  if (cy > height - r) {
-    cy = height - r;
-    if (vy > 0) { vy = -vy * restitution; collided = true; }
-  }
+  // walls + bounce
+  if (cx < r) { cx = r; if (vx < 0) { vx = -vx * restitution; collided = true; } }
+  if (cx > width - r) { cx = width - r; if (vx > 0) { vx = -vx * restitution; collided = true; } }
+  if (cy < r) { cy = r; if (vy < 0) { vy = -vy * restitution; collided = true; } }
+  if (cy > height - r) { cy = height - r; if (vy > 0) { vy = -vy * restitution; collided = true; } }
 
-  // Swap colors on edge collision 
   if (collided && millis() - lastEdgeToggleAt > edgeCooldownMs) {
+    // swap colors
     const tmp = ballColor;
     ballColor = bgColor;
     bgColor = tmp;
+
+    // haptic feedback
+    triggerHaptic();  // NEW
+
     lastEdgeToggleAt = millis();
   }
 
