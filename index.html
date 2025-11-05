@@ -6,30 +6,30 @@
       name="viewport"
       content="width=device-width, initial-scale=1, viewport-fit=cover"
     />
-    <title>Gyrosonic</title>
+    <title>GyroSonic</title>
     <!-- p5 + p5.sound -->
     <script src="https://cdn.jsdelivr.net/npm/p5@1.9.0/lib/p5.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/p5@1.9.0/lib/addons/p5.sound.min.js"></script>
     <style>
-      html, body { margin: 0; padding: 0; height: 100%; background:#fff; }
-      #controls { position: fixed; left: 20px; top: 20px; display:flex; gap:10px; }
+      html, body { margin:0; padding:0; height:100%; background:#fff; }
+      #ui { position: fixed; left: 16px; top: 16px; display:flex; gap:8px; align-items:center; z-index: 10; }
       button {
-        font: 16px system-ui, sans-serif; padding: 10px 14px; border-radius: 10px;
-        border: 1px solid #ccc; background: #fff; cursor: pointer;
+        font: 15px system-ui, -apple-system, Segoe UI, Roboto, sans-serif;
+        padding: 9px 12px; border-radius: 10px; border: 1px solid #ccc; background:#fff; cursor:pointer;
       }
-      #hint {
-        position: fixed; left: 20px; top: 70px; font: 16px/1.4 system-ui, sans-serif;
-        background: rgba(255,255,255,0.9); padding: 8px 10px; border-radius: 10px;
+      #status {
+        font: 14px/1.4 system-ui, -apple-system, Segoe UI, Roboto, sans-serif;
+        background: rgba(255,255,255,0.9);
+        padding: 8px 10px; border-radius: 10px; max-width: 70vw;
       }
     </style>
   </head>
   <body>
-    <div id="controls">
+    <div id="ui">
       <button id="enableBtn">Enable motion & sound</button>
       <button id="testBtn" disabled>Test sound</button>
+      <div id="status">Tap “Enable” once. If silent, turn off silent mode 🔊</div>
     </div>
-    <div id="hint">Tap “Enable” once, then “Test sound”. Tilt to bounce.
-      <br> 🔊 If you don’t hear anything, turn off Silent mode and raise your volume.</div>
 
     <script src="./sketch.js"></script>
   </body>
