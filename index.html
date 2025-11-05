@@ -2,26 +2,25 @@
 <html lang="en">
   <head>
     <meta charset="utf-8" />
-    <meta
-      name="viewport"
-      content="width=device-width, initial-scale=1, viewport-fit=cover"
-    />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
     <title>GyroSonic</title>
-    <!-- p5 + p5.sound -->
+
+    <!-- p5 core -->
     <script src="https://cdn.jsdelivr.net/npm/p5@1.9.0/lib/p5.min.js"></script>
+
+    <!-- IMPORTANT: disable AudioWorklet BEFORE p5.sound -->
+    <script>
+      // Safari workaround: force p5.sound to skip AudioWorklet path
+      // and use the legacy ScriptProcessor-based engine.
+      window.p5soundDisableAudioWorklet = true;
+    </script>
+
+    <!-- p5.sound -->
     <script src="https://cdn.jsdelivr.net/npm/p5@1.9.0/lib/addons/p5.sound.min.js"></script>
+    <!-- (The .map 404 is fine. You can ignore it.) -->
+
     <style>
       html, body { margin:0; padding:0; height:100%; background:#fff; }
-      #ui { position: fixed; left: 16px; top: 16px; display:flex; gap:8px; align-items:center; z-index: 10; }
-      button {
-        font: 15px system-ui, -apple-system, Segoe UI, Roboto, sans-serif;
-        padding: 9px 12px; border-radius: 10px; border: 1px solid #ccc; background:#fff; cursor:pointer;
-      }
-      #status {
-        font: 14px/1.4 system-ui, -apple-system, Segoe UI, Roboto, sans-serif;
-        background: rgba(255,255,255,0.9);
-        padding: 8px 10px; border-radius: 10px; max-width: 70vw;
-      }
     </style>
   </head>
   <body>
