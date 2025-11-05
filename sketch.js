@@ -14,29 +14,11 @@ const restitution = 0.75;
 let lastEdgeToggleAt = 0;
 const edgeCooldownMs = 400;
 
-// --- NEW: hidden switch for iOS haptic ---
-let hapticSwitch;
-function setupHapticSwitch() {
-  hapticSwitch = document.createElement("input");
-  hapticSwitch.type = "checkbox";
-  hapticSwitch.setAttribute("role", "switch");
-  // keep in DOM but off-screen (display:none can suppress effects)
-  hapticSwitch.style.position = "absolute";
-  hapticSwitch.style.left = "-9999px";
-  document.body.appendChild(hapticSwitch);
+let collisionSound;
+
+function preload() {
+  collisionSound = loadSound('assets/a.mp3');
 }
-function triggerHaptic() {
-  // Android / supported browsers
-  if ("vibrate" in navigator) {
-    navigator.vibrate(20);
-    return;
-  }
-  // iOS Safari workaround: toggle native switch (Safari 17.4+ haptic)
-  if (hapticSwitch) {
-    hapticSwitch.checked = !hapticSwitch.checked;
-  }
-}
-// --- end NEW ---
 
 function setup() {
   createCanvas(windowWidth, windowHeight);
@@ -44,8 +26,6 @@ function setup() {
   cy = height / 2;
   ballColor = color(0);
   bgColor = color(255);
-
-  setupHapticSwitch(); // NEW
 
   btn = document.getElementById("btn");
   hint = document.getElementById("hint");
@@ -117,8 +97,10 @@ function draw() {
     ballColor = bgColor;
     bgColor = tmp;
 
-    // haptic feedback
-    triggerHaptic();  // NEW
+    // play collision sound
+    if (collisionSound && !collisionSound.isPlaying()) {
+      collisionSound.play();
+    }
 
     lastEdgeToggleAt = millis();
   }
