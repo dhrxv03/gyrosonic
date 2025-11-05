@@ -7,6 +7,7 @@
       content="width=device-width, initial-scale=1, viewport-fit=cover"
     />
     <title>Gyrosonic</title>
+    <!-- p5 + p5.sound -->
     <script src="https://cdn.jsdelivr.net/npm/p5@1.9.0/lib/p5.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/p5@1.9.0/lib/addons/p5.sound.min.js"></script>
     <style>
@@ -18,12 +19,13 @@
       #btn {
         position: fixed; left: 20px; top: 20px; font: 16px system-ui, sans-serif;
         padding: 10px 14px; border-radius: 10px; border: 1px solid #ccc; background: #fff;
+        cursor: pointer;
       }
     </style>
   </head>
   <body>
-    <button id="btn" hidden>Enable motion / orientation</button>
-    <div id="hint" hidden>Tap the button to enable motion/orientation and audio</div>
+    <button id="btn">Enable motion & sound</button>
+    <div id="hint">Tap the button to enable motion/orientation and audio</div>
 
     <script src="./sketch.js"></script>
   </body>
