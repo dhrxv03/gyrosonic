@@ -12,20 +12,23 @@
     <script src="https://cdn.jsdelivr.net/npm/p5@1.9.0/lib/addons/p5.sound.min.js"></script>
     <style>
       html, body { margin: 0; padding: 0; height: 100%; background:#fff; }
+      #controls { position: fixed; left: 20px; top: 20px; display:flex; gap:10px; }
+      button {
+        font: 16px system-ui, sans-serif; padding: 10px 14px; border-radius: 10px;
+        border: 1px solid #ccc; background: #fff; cursor: pointer;
+      }
       #hint {
         position: fixed; left: 20px; top: 70px; font: 16px/1.4 system-ui, sans-serif;
         background: rgba(255,255,255,0.9); padding: 8px 10px; border-radius: 10px;
       }
-      #btn {
-        position: fixed; left: 20px; top: 20px; font: 16px system-ui, sans-serif;
-        padding: 10px 14px; border-radius: 10px; border: 1px solid #ccc; background: #fff;
-        cursor: pointer;
-      }
     </style>
   </head>
   <body>
-    <button id="btn">Enable motion & sound</button>
-    <div id="hint">Tap the button to enable motion/orientation and audio</div>
+    <div id="controls">
+      <button id="enableBtn">Enable motion & sound</button>
+      <button id="testBtn" disabled>Test sound</button>
+    </div>
+    <div id="hint">Tap “Enable” once, then “Test sound”. Tilt to bounce.</div>
 
     <script src="./sketch.js"></script>
   </body>

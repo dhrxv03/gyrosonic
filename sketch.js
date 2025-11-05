@@ -2,22 +2,26 @@
 let permissionGranted = false;
 let cx, cy;
 let vx = 0, vy = 0;
-let btn, hint;
 
 let ballColor, bgColor;
 const ballSize = 80;
 
 // physics tuning
-const accel = 0.15;       // tilt -> acceleration
-const damping = 0.985;    // friction
-const restitution = 0.75; // bounce energy (0.6–0.9 feels good)
+const accel = 0.15;
+const damping = 0.985;
+const restitution = 0.75;
 
-// color/hit debounce
-let lastEdgeToggleAt = 0;
-const edgeCooldownMs = 400;
+// debounce for collision color/sound
+let lastEdgeAt = 0;
+const edgeCooldownMs = 300;
 
 // audio
 let collisionSound = null;
+let osc = null;     // fallback oscillator
+let env = null;
+let soundReady = false;
+
+let enableBtn, testBtn, hintEl;
 
 function setup() {
   createCanvas(windowWidth, windowHeight);
@@ -27,15 +31,37 @@ function setup() {
   ballColor = color(0);
   bgColor = color(255);
 
-  btn = document.getElementById("btn");
-  hint = document.getElementById("hint");
+  enableBtn = document.getElementById("enableBtn");
+  testBtn   = document.getElementById("testBtn");
+  hintEl    = document.getElementById("hint");
 
-  // Always use a user gesture to init (helps both iOS and desktop for audio)
-  btn.addEventListener("click", requestAccess, { once: true });
+  enableBtn.addEventListener("click", onEnableClicked, { once: true });
+  testBtn.addEventListener("click", onTestSound);
+
+  // prepare fallback oscillator (silent until triggered)
+  osc = new p5.Oscillator("sine");
+  env = new p5.Envelope();
+  env.setADSR(0.005, 0.05, 0.0, 0.05);   // short blip
+  env.setRange(0.4, 0.0);                // peak amp 0.4
+  osc.freq(880);                         // A5 beep
+  osc.start();
+  osc.amp(0);
 }
 
-async function requestAccess() {
-  // 1) Ask for sensor permissions on iOS 13+ (if available)
+async function onEnableClicked() {
+  // Unlock audio first
+  try {
+    if (typeof userStartAudio === "function") {
+      await userStartAudio();
+    }
+    const ac = getAudioContext();
+    if (ac && ac.state !== "running") {
+      await ac.resume();
+    }
+    masterVolume(1.0);
+  } catch (_) {}
+
+  // Request motion/orientation permissions (iOS 13+)
   try {
     if (typeof DeviceOrientationEvent !== "undefined" &&
         typeof DeviceOrientationEvent.requestPermission === "function") {
@@ -45,45 +71,57 @@ async function requestAccess() {
         typeof DeviceMotionEvent.requestPermission === "function") {
       await DeviceMotionEvent.requestPermission().catch(() => {});
     }
-  } catch (_) {
-    // ignore permission errors; proceed best-effort
-  }
+  } catch (_) {}
 
-  // 2) Unlock WebAudio, then load sound asynchronously
+  // Load the sound (CASE-SENSITIVE)
   try {
-    if (typeof userStartAudio === "function") {
-      await userStartAudio(); // required on iOS before creating/playing audio
-    }
     loadSound(
       "assets/A.mp3",
       (s) => {
         collisionSound = s;
-        // ensure quick replays per edge-hit
         collisionSound.playMode("restart");
-        collisionSound.setVolume(0.7);
+        collisionSound.setVolume(0.9);
+        soundReady = true;
+        testBtn.disabled = false;
+        if (hintEl) hintEl.textContent = "Sound loaded. Tap ‘Test sound’ or just tilt.";
       },
       () => {
-        // load failed; continue without sound
-        collisionSound = null;
+        // load failed, keep fallback
+        soundReady = false;
+        testBtn.disabled = false; // allow test of fallback beep
+        if (hintEl) hintEl.textContent = "Sound failed to load (check path). Fallback beep enabled.";
       }
     );
   } catch (_) {
-    // continue without sound
-    collisionSound = null;
+    soundReady = false;
+    testBtn.disabled = false;
   }
 
-  // 3) Ready to run
   permissionGranted = true;
-  if (btn) btn.hidden = true;
-  if (hint) hint.hidden = true;
+  enableBtn.disabled = true;
+}
+
+async function onTestSound() {
+  // Make sure context is running
+  try {
+    const ac = getAudioContext();
+    if (ac && ac.state !== "running") await ac.resume();
+  } catch (_) {}
+
+  if (soundReady && collisionSound && collisionSound.isLoaded()) {
+    collisionSound.play();
+  } else {
+    // fallback beep
+    osc.amp(0); // reset
+    env.play(osc);
+  }
 }
 
 function draw() {
   background(bgColor);
 
   if (!permissionGranted) {
-    // little visual around the button area
-    noFill(); stroke(0); rect(16, 16, 260, 64, 12);
+    noFill(); stroke(0); rect(16, 16, 320, 64, 12);
     return;
   }
 
@@ -100,7 +138,6 @@ function draw() {
   cx += vx;
   cy += vy;
 
-  // wall collisions with bounce
   const r = ballSize / 2;
   let collided = false;
 
@@ -109,13 +146,23 @@ function draw() {
   if (cy < r) { cy = r; if (vy < 0) { vy = -vy * restitution; collided = true; } }
   if (cy > height - r) { cy = height - r; if (vy > 0) { vy = -vy * restitution; collided = true; } }
 
-  // on edge hit: swap colors + play sound (debounced)
-  if (collided && millis() - lastEdgeToggleAt > edgeCooldownMs) {
+  if (collided && millis() - lastEdgeAt > edgeCooldownMs) {
+    // swap colors
     const tmp = ballColor; ballColor = bgColor; bgColor = tmp;
-    lastEdgeToggleAt = millis();
+    lastEdgeAt = millis();
 
-    if (collisionSound && collisionSound.isLoaded()) {
+    // ensure AudioContext is running (iOS can suspend randomly)
+    try {
+      const ac = getAudioContext();
+      if (ac && ac.state !== "running") { ac.resume(); }
+    } catch (_) {}
+
+    // play sound or fallback beep
+    if (soundReady && collisionSound && collisionSound.isLoaded()) {
       collisionSound.play();
+    } else {
+      osc.amp(0);
+      env.play(osc);
     }
   }
 
