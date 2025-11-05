@@ -15,11 +15,149 @@ const restitution = 0.75;
 let lastEdgeAt = 0;
 const edgeCooldownMs = 220;
 
-// audio
-let samples = [];          // holds loaded p5.SoundFile objects (A–N)
+// audio (A–N)
+let samples = [];
 let audioReady = false;
 
+// ui
 let enableBtn, hintEl;
+
+// -------- PATATAP-STYLE VISUALS --------
+const animations = [];
+const palettes = [
+  ["#00D1B2","#14FFEC","#00A6FB","#3C91E6","#1B2CC1"],
+  ["#FF3366","#FFBD00","#6BF178","#2D7DD2","#F79824"],
+  ["#B794F4","#8BD3E6","#FF90E8","#FDE24F","#00E8FC"],
+  ["#FF7F50","#7FFFD4","#F9F871","#BFFCC6","#B28DFF"]
+];
+let paletteIdx = 0;
+
+// base class-like helpers
+function spawnVisuals(x, y, impact) {
+  const howMany = 2 + floor(map(impact, 0, 12, 0, 5, true)); // more energy -> more effects
+  for (let i = 0; i < howMany; i++) {
+    const pick = random([Ring, Confetti, Rays, Blob]);
+    animations.push(new pick(x, y, impact, randomPaletteColor()));
+  }
+  // cycle palette occasionally
+  if (random() < 0.2) paletteIdx = (paletteIdx + 1) % palettes.length;
+}
+
+function randomPaletteColor() {
+  return color(random(palettes[paletteIdx]));
+}
+
+// Easing
+function easeOutQuad(t){ return 1 - (1 - t) * (1 - t); }
+function easeOutExpo(t){ return t === 1 ? 1 : 1 - pow(2, -10 * t); }
+
+// VISUAL 1: expanding ring
+class Ring {
+  constructor(x, y, energy, col){
+    this.x = x; this.y = y;
+    this.life = 0; this.dur = 350 + energy*15; // ms
+    this.maxR = 40 + energy*8;
+    this.col = col;
+    this.w = 2 + map(energy, 0, 12, 1, 5, true);
+  }
+  draw() {
+    const t = constrain(this.life/this.dur, 0, 1);
+    const k = easeOutExpo(t);
+    noFill();
+    stroke(red(this.col), green(this.col), blue(this.col), 255*(1-t));
+    strokeWeight(this.w*(1-t));
+    circle(this.x, this.y, this.maxR*2*k);
+    this.life += deltaTime;
+    return t < 1;
+  }
+}
+
+// VISUAL 2: confetti particles
+class Confetti {
+  constructor(x,y,energy,col){
+    this.x = x; this.y = y;
+    this.vx = random(-2,2) * (1 + energy*0.08);
+    this.vy = random(-3,-0.5) * (1 + energy*0.06);
+    this.g = 0.08;
+    this.rot = random(TWO_PI);
+    this.vr = random(-0.2,0.2);
+    this.size = random(4,10);
+    this.life=0; this.dur = 500 + energy*20;
+    this.col = col;
+  }
+  draw(){
+    const t = constrain(this.life/this.dur, 0, 1);
+    this.vy += this.g;
+    this.x += this.vx;
+    this.y += this.vy;
+    this.rot += this.vr;
+    push();
+    translate(this.x, this.y);
+    rotate(this.rot);
+    noStroke();
+    fill(red(this.col), green(this.col), blue(this.col), 255*(1-t));
+    rectMode(CENTER);
+    rect(0,0,this.size, this.size*0.6, 2);
+    pop();
+    this.life += deltaTime;
+    return t < 1;
+  }
+}
+
+// VISUAL 3: radial rays
+class Rays {
+  constructor(x,y,energy,col){
+    this.x=x; this.y=y;
+    this.n = 8 + floor(random(6)) + floor(energy); // rays count
+    this.len = 20 + energy*6;
+    this.life=0; this.dur=300 + energy*10;
+    this.col=col;
+  }
+  draw(){
+    const t = constrain(this.life/this.dur,0,1);
+    const k = easeOutQuad(t);
+    stroke(red(this.col), green(this.col), blue(this.col), 200*(1-t));
+    strokeWeight(2*(1-t));
+    for(let i=0;i<this.n;i++){
+      const a = (TWO_PI/this.n)*i + (1-k)*0.8; // slight rotation
+      const r0 = 8;
+      const r1 = r0 + this.len*(1-k);
+      line(this.x + cos(a)*r0, this.y + sin(a)*r0,
+           this.x + cos(a)*r1, this.y + sin(a)*r1);
+    }
+    this.life += deltaTime;
+    return t < 1;
+  }
+}
+
+// VISUAL 4: blobby pulse
+class Blob {
+  constructor(x,y,energy,col){
+    this.x=x; this.y=y;
+    this.rad = 12 + energy*4;
+    this.jit = 6 + energy*0.8;
+    this.pts = 16;
+    this.life=0; this.dur=380 + energy*15;
+    this.col=col;
+  }
+  draw(){
+    const t = constrain(this.life/this.dur,0,1);
+    const k = easeOutQuad(t);
+    noStroke();
+    fill(red(this.col), green(this.col), blue(this.col), 140*(1-t));
+    beginShape();
+    for(let i=0;i<this.pts;i++){
+      const a = (TWO_PI/this.pts)*i;
+      const r = this.rad*(1+k*0.6) + noise(i*0.2, t*3)*this.jit*(1-k);
+      vertex(this.x + cos(a)*r, this.y + sin(a)*r);
+    }
+    endShape(CLOSE);
+    this.life += deltaTime;
+    return t < 1;
+  }
+}
+
+// -------- END VISUALS --------
 
 function setup() {
   createCanvas(windowWidth, windowHeight);
@@ -31,21 +169,17 @@ function setup() {
 
   enableBtn = document.getElementById("enableBtn") || document.getElementById("btn");
   hintEl    = document.getElementById("hint");
-
-  // Fallback: if your page uses the older "btn" id
   if (enableBtn) enableBtn.addEventListener("click", onEnableClicked, { once: true });
 }
 
 async function onEnableClicked() {
-  // Unlock audio (must be in a user gesture)
   try {
     if (typeof userStartAudio === "function") await userStartAudio();
     const ac = getAudioContext();
     if (ac && ac.state !== "running") await ac.resume();
     masterVolume(1.0);
-  } catch (_) {}
+  } catch(_) {}
 
-  // Request motion/orientation permissions (iOS 13+)
   try {
     if (typeof DeviceOrientationEvent !== "undefined" &&
         typeof DeviceOrientationEvent.requestPermission === "function") {
@@ -55,51 +189,50 @@ async function onEnableClicked() {
         typeof DeviceMotionEvent.requestPermission === "function") {
       await DeviceMotionEvent.requestPermission().catch(() => {});
     }
-  } catch (_) {}
+  } catch(_) {}
 
-  // Load samples A–N (CASE-SENSITIVE)
+  // load A–N
   const letters = "ABCDEFGHIJKLMN".split("");
-  let loadedCount = 0;
-
+  let loaded = 0;
   letters.forEach((L, i) => {
     loadSound(
       `assets/${L}.mp3`,
       (s) => {
         s.playMode("restart");
-        s.setVolume(0.85);   // base volume (we'll adjust pitch via rate)
+        s.setVolume(0.85);
         samples[i] = s;
-        loadedCount++;
-        if (loadedCount === letters.length) {
+        if (++loaded === letters.length) {
           audioReady = true;
           if (hintEl) hintEl.textContent = "Sound ready. Tilt to bounce (turn off Silent mode).";
         }
       },
-      () => {
-        // ignore one-off failures; still usable if others load
-      }
+      () => {}
     );
   });
 
   permissionGranted = true;
   if (enableBtn) enableBtn.hidden = true;
   if (hintEl && !audioReady) {
-    hintEl.textContent = "Loading sounds… If you hear nothing, turn off Silent mode & raise volume.";
+    hintEl.textContent = "Loading sounds… If silent, turn off Silent mode & raise volume.";
   }
 }
 
 function draw() {
   background(bgColor);
 
+  // draw + prune animations
+  for (let i = animations.length - 1; i >= 0; i--) {
+    if (!animations[i].draw()) animations.splice(i, 1);
+  }
+
   if (!permissionGranted) {
     noFill(); stroke(0); rect(16, 16, 320, 64, 12);
     return;
   }
 
-  // tilt (p5 provides rotationX/rotationY after permission)
   const dx = constrain(rotationY || 0, -3, 3);
   const dy = constrain(rotationX || 0, -3, 3);
 
-  // integrate physics
   vx += dx * accel;
   vy += dy * accel;
   vx *= damping;
@@ -110,35 +243,26 @@ function draw() {
 
   const r = ballSize / 2;
   let collided = false;
-  let impactSpeed = Math.hypot(vx, vy); // speed BEFORE bounce change
+  const impactSpeed = Math.hypot(vx, vy);
 
-  // walls + bounce
-  if (cx < r) {
-    cx = r;
-    if (vx < 0) { collided = true; vx = -vx * restitution; }
-  }
-  if (cx > width - r) {
-    cx = width - r;
-    if (vx > 0) { collided = true; vx = -vx * restitution; }
-  }
-  if (cy < r) {
-    cy = r;
-    if (vy < 0) { collided = true; vy = -vy * restitution; }
-  }
-  if (cy > height - r) {
-    cy = height - r;
-    if (vy > 0) { collided = true; vy = -vy * restitution; }
-  }
+  if (cx < r) { cx = r; if (vx < 0) { collided = true; vx = -vx * restitution; } }
+  if (cx > width - r) { cx = width - r; if (vx > 0) { collided = true; vx = -vx * restitution; } }
+  if (cy < r) { cy = r; if (vy < 0) { collided = true; vy = -vy * restitution; } }
+  if (cy > height - r) { cy = height - r; if (vy > 0) { collided = true; vy = -vy * restitution; } }
 
   if (collided && millis() - lastEdgeAt > edgeCooldownMs) {
     // swap colors
     const tmp = ballColor; ballColor = bgColor; bgColor = tmp;
     lastEdgeAt = millis();
 
-    // play pitched sound based on impact speed
+    // visuals
+    spawnVisuals(cx, cy, impactSpeed);
+
+    // audio with velocity-based pitch
     playPitchedCollision(impactSpeed);
   }
 
+  // ball
   noStroke();
   fill(ballColor);
   ellipse(cx, cy, ballSize);
@@ -148,34 +272,26 @@ function windowResized() {
   resizeCanvas(windowWidth, windowHeight);
 }
 
-/**
- * Map a collision speed to a playback rate and play a random sample.
- * - You can tweak speedRangeMin/Max and rateMin/Max to taste.
- */
+// Velocity -> playback rate + random sample
 function playPitchedCollision(speed) {
   if (!audioReady || samples.length === 0) return;
 
-  // Typical speeds given accel/damping are ~0..15; tune these after testing
-  const speedRangeMin = 1.5;   // very soft tap
-  const speedRangeMax = 12.0;  // very hard hit
-
-  // Pitch range: 0.75 = lower, 1.0 = normal, 1.6 = higher
+  const speedMin = 1.5;
+  const speedMax = 12.0;
   const rateMin = 0.75;
   const rateMax = 1.6;
 
-  // Map speed -> rate with clamping
-  const t = constrain((speed - speedRangeMin) / (speedRangeMax - speedRangeMin), 0, 1);
+  const t = constrain((speed - speedMin) / (speedMax - speedMin), 0, 1);
   const rate = lerp(rateMin, rateMax, t);
 
-  // Random sample for timbral variety
   const s = random(samples);
   if (s && s.isLoaded()) {
     try {
       const ac = getAudioContext();
       if (ac && ac.state !== "running") ac.resume();
-    } catch (_) {}
+    } catch(_) {}
 
     s.rate(rate);
-    s.play(); // restart mode avoids overlap build-up
+    s.play();
   }
 }
