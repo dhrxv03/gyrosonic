@@ -5,23 +5,23 @@ let btn, hint;
 let ballColor, bgColor;
 let ballSize = 80;
 
-// physics params (tweak to taste)
-const accel = 0.15;      // how much tilt adds to velocity
-const damping = 0.985;   // friction each frame
-const restitution = 0.75;// bounce energy: 1 = full, <1 = loses energy
+// physics
+const accel = 0.15;
+const damping = 0.985;
+const restitution = 0.75;
 
-// debounce for color swap / sound
+// debounce for color/sound
 let lastEdgeToggleAt = 0;
 const edgeCooldownMs = 400;
 
 // --- background pulse ---
-let pulse = 0;                  // 0..1 intensity
-const pulseDecay = 0.90;        // decay per frame (0.85 = stronger, 0.95 = softer)
+let pulse = 0;                 // 0..1
+const pulseDecay = 0.90;       // lower = stronger/longer
 
 // ---------- Web Audio (no p5.sound) ----------
-let AC = null;                 // AudioContext
+let AC = null;
 let masterGain = null;
-let buffers = [];              // decoded AudioBuffer[]
+let buffers = [];              // AudioBuffer[]
 let audioReady = false;
 const LETTERS = "ABCDEFGHIJKLMN".split("");
 
@@ -34,8 +34,6 @@ async function initAudioAndLoad() {
       masterGain.gain.value = 0.9;
       masterGain.connect(AC.destination);
     }
-
-    // Load A..N once (user gesture context)
     const loads = LETTERS.map(async (L, i) => {
       try {
         const res = await fetch(`assets/${L}.mp3`, { cache: "force-cache" });
@@ -56,7 +54,7 @@ function playCollisionSound(speed) {
   if (!audioReady || !AC) return;
   if (AC.state !== "running") { AC.resume().catch(()=>{}); }
 
-  // map speed -> playbackRate (velocity-based pitch)
+  // speed -> playbackRate
   const t = constrain((speed - 1.5) / (12.0 - 1.5), 0, 1);
   const rate = lerp(0.8, 1.6, t);
 
@@ -69,7 +67,7 @@ function playCollisionSound(speed) {
   src.playbackRate.value = rate;
 
   const g = AC.createGain();
-  g.gain.value = lerp(0.5, 1.0, t); // optional: louder on harder hits
+  g.gain.value = lerp(0.5, 1.0, t); // louder on harder hits
   src.connect(g).connect(masterGain);
 
   try { src.start(); } catch(_) {}
@@ -87,8 +85,6 @@ const palettes = [
 ];
 let paletteIdx = 0;
 const randCol = () => color(random(palettes[paletteIdx]));
-
-// Easing helpers
 const easeOutQuad = (t)=>1-(1-t)*(1-t);
 const easeOutExpo = (t)=> t===1 ? 1 : 1 - Math.pow(2,-10*t);
 
@@ -195,33 +191,27 @@ class Blob {
 }
 
 function spawnVisuals(x,y,impact){
-  // choose 2–6 effects depending on impact
   const count = 2 + floor(map(impact,0,12,0,4,true));
   for (let i=0;i<count;i++){
     const col = randCol();
     const K = random([Ring, Confetti, Rays, Blob]);
     animations.push(new K(x,y,impact,col));
   }
-  // rotate palette sometimes
   if (random() < 0.2) paletteIdx = (paletteIdx + 1) % palettes.length;
-  // cap to avoid overload on mobile
   if (animations.length > MAX_ANIMS) animations.splice(0, animations.length - MAX_ANIMS);
 }
 
-// -----------------------------------------------
-
+// --- background pulse painter ---
 function drawBackgroundPulse() {
   if (pulse <= 0.001) return;
 
-  // radial gradient that fades outwards from screen center
   const ctx = drawingContext;
   const cxp = width / 2, cyp = height / 2;
   const maxR = Math.hypot(width, height);
 
-  // inverse of current bg for a nice contrast pulse
   const inv = color(255 - red(bgColor), 255 - green(bgColor), 255 - blue(bgColor));
   const r = red(inv), g = green(inv), b = blue(inv);
-  const a = 0.35 * pulse; // center alpha
+  const a = 0.35 * pulse;
 
   const grad = ctx.createRadialGradient(cxp, cyp, 0, cxp, cyp, maxR);
   grad.addColorStop(0, `rgba(${r},${g},${b},${a})`);
@@ -232,7 +222,6 @@ function drawBackgroundPulse() {
   ctx.fillRect(0, 0, width, height);
   ctx.restore();
 
-  // decay
   pulse *= pulseDecay;
 }
 
@@ -256,7 +245,7 @@ function setup() {
     btn.addEventListener("click", requestAccess, { once: true });
   } else {
     permissionGranted = true;
-    // (Audio stays off until user interacts; we keep your simple flow.)
+    // we keep audio init tied to a gesture; leave it off here
   }
 }
 
@@ -272,11 +261,10 @@ async function requestAccess() {
     }
     if (o === "granted" || m === "granted") {
       permissionGranted = true;
-      // init audio & load samples **inside user gesture**
-      await initAudioAndLoad();
+      await initAudioAndLoad(); // in gesture
     }
   } catch (e) {
-    // console.error(e);
+    // ignore
   } finally {
     btn.hidden = true;
     hint.hidden = true;
@@ -287,7 +275,7 @@ function draw() {
   background(bgColor);
   drawBackgroundPulse();
 
-  // draw and prune animations
+  // draw & prune animations
   for (let i=animations.length-1;i>=0;i--){
     if (!animations[i].draw()) animations.splice(i,1);
   }
@@ -297,11 +285,10 @@ function draw() {
     return;
   }
 
-  // Use tilt to accelerate the ball
+  // tilt to accelerate
   const dx = constrain(rotationY || 0, -3, 3);
   const dy = constrain(rotationX || 0, -3, 3);
 
-  // integrate motion
   vx += dx * accel;
   vy += dy * accel;
   vx *= damping;
@@ -318,13 +305,30 @@ function draw() {
   if (cy > height - r) { cy = height - r; if (vy > 0) { vy = -vy * restitution; collided = true; } }
 
   if (collided && millis() - lastEdgeToggleAt > edgeCooldownMs) {
-    // swap colors
-    const tmp = ballColor; ballColor = bgColor; bgColor = tmp;
     lastEdgeToggleAt = millis();
 
     const impact = Math.hypot(vx, vy);
-    // bump the background pulse (clamped)
+
+    // occasionally switch palette
+    if (random() < 0.25) paletteIdx = (paletteIdx + 1) % palettes.length;
+
+    // pick two different random colors (ball/bg) from current palette
+    const palette = palettes[paletteIdx];
+    let newBall = color(random(palette));
+    let newBg   = color(random(palette));
+    while (
+      red(newBall) === red(newBg) &&
+      green(newBall) === green(newBg) &&
+      blue(newBall) === blue(newBg)
+    ) {
+      newBg = color(random(palette));
+    }
+    ballColor = newBall;
+    bgColor   = newBg;
+
+    // pulse bump
     pulse = min(1, pulse + map(impact, 0, 12, 0.25, 0.8, true));
+
     playCollisionSound(impact);
     spawnVisuals(cx, cy, impact);
   }
