@@ -21,6 +21,12 @@ let buffers = [];              // decoded AudioBuffer[]
 let audioReady = false;
 const LETTERS = "ABCDEFGHIJKLMN".split("");
 
+// ====== Permission debug state ======
+let doPermResult = "n/a";
+let dmPermResult = "n/a";
+let orientationEvents = 0;
+let motionEvents = 0;
+
 // ====== Motion fallbacks & debug ======
 let doBeta = null, doGamma = null, haveDO = false;      // deviceorientation
 let dmAx = null, dmAy = null, haveDM = false;           // devicemotion (incl. gravity)
@@ -169,43 +175,87 @@ function setup() {
 }
 
 async function onEnableClicked() {
+  // 0) Security + embed checks (status message only)
+  const isSecure = window.isSecureContext;
+  const isFramed = window.self !== window.top;
+  if (!isSecure) {
+    setStatus("This page is not HTTPS (secure context). Sensors will be blocked.");
+  }
+  if (isFramed) {
+    setStatus("This page is inside an iframe. Parent may block sensors.");
+  }
+
   // 1) Unlock audio + load buffers (user gesture)
   await initAudioAndLoad();
 
-  // 2) Request motion/orientation (iOS 13+)
-  try {
-    if (typeof DeviceOrientationEvent !== "undefined" &&
-        typeof DeviceOrientationEvent.requestPermission === "function") {
-      await DeviceOrientationEvent.requestPermission().catch(()=>{});
-    }
-    if (typeof DeviceMotionEvent !== "undefined" &&
-        typeof DeviceMotionEvent.requestPermission === "function") {
-      await DeviceMotionEvent.requestPermission().catch(()=>{});
-    }
-  } catch(_) {}
+  // 2) Attach listeners FIRST so we can detect if any events arrive
+  orientationEvents = 0;
+  motionEvents = 0;
 
-  // 3) Attach BOTH fallbacks
-  window.addEventListener('deviceorientation', (e) => {
+  const onDO = (e) => {
     if (typeof e.beta === 'number' && typeof e.gamma === 'number') {
       doBeta  = e.beta;
       doGamma = e.gamma;
-      haveDO = true;
+      haveDO  = true;
+      orientationEvents++;
+      if (orientationEvents === 1) setStatus("deviceorientation OK. Tilt to move.");
     }
-  }, true);
-
-  window.addEventListener('devicemotion', (e) => {
+  };
+  const onDM = (e) => {
     if (e && e.accelerationIncludingGravity) {
-      // Safari gives m/s^2; scale to [-3..3] later
-      dmAx = e.accelerationIncludingGravity.x; // left/right
-      dmAy = e.accelerationIncludingGravity.y; // front/back
+      dmAx = e.accelerationIncludingGravity.x;
+      dmAy = e.accelerationIncludingGravity.y;
       haveDM = true;
+      motionEvents++;
+      if (motionEvents === 1) setStatus("devicemotion OK. Tilt to move.");
     }
-  }, true);
+  };
 
+  window.addEventListener('deviceorientation', onDO, true);
+  window.addEventListener('devicemotion', onDM, true);
+
+  // 3) Try iOS permission API (Safari & Chrome on iOS use WebKit)
+  try {
+    if (typeof DeviceOrientationEvent !== "undefined" &&
+        typeof DeviceOrientationEvent.requestPermission === "function") {
+      doPermResult = await DeviceOrientationEvent.requestPermission();
+    } else {
+      doPermResult = "unsupported";
+    }
+  } catch (e) {
+    doPermResult = "error";
+    console.warn("DeviceOrientationEvent.requestPermission error:", e);
+  }
+
+  try {
+    if (typeof DeviceMotionEvent !== "undefined" &&
+        typeof DeviceMotionEvent.requestPermission === "function") {
+      dmPermResult = await DeviceMotionEvent.requestPermission();
+    } else {
+      dmPermResult = "unsupported";
+    }
+  } catch (e) {
+    dmPermResult = "error";
+    console.warn("DeviceMotionEvent.requestPermission error:", e);
+  }
+
+  // 4) Status readout so we KNOW the result
+  setStatus(`Perm — orientation: ${doPermResult}, motion: ${dmPermResult}. If stuck, enable Settings → Safari → Motion & Orientation Access.`);
+
+  // 5) Give Safari a moment to start delivering events; if nothing after 1s, nudge user
+  setTimeout(() => {
+    if (orientationEvents === 0 && motionEvents === 0) {
+      setStatus(`No sensor events yet.
+- Check Settings → Safari → Motion & Orientation Access (turn ON)
+- Reload and tap "Enable" again
+- Ensure not embedded in an iframe
+- Chrome iOS uses the same Safari setting`);
+    }
+  }, 1000);
+
+  // 6) Ready
   permissionGranted = true;
   if (enableBtn) enableBtn.disabled = true;
-
-  setStatus("Sensors enabled. If Safari still doesn't move, check Settings → Safari → Motion & Orientation Access (ON).");
 }
 
 async function onTestSound() {
@@ -288,6 +338,17 @@ function draw() {
 
   // HUD (comment out if you don’t want it)
   drawHUD(rx, ry);
+
+  // extra debug strip (secure / framed / perms / counts)
+  push();
+  noStroke(); fill(0,150);
+  rect(10, height - 120, 300, 38, 8);
+  fill(255); textSize(12);
+  text(
+    `secure:${window.isSecureContext} framed:${window.self!==window.top}  perm(O:${doPermResult}/M:${dmPermResult}) evts(O:${orientationEvents}/M:${motionEvents})`,
+    18, height - 100
+  );
+  pop();
 }
 
 function windowResized(){ resizeCanvas(windowWidth, windowHeight); }
