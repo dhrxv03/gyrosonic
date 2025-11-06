@@ -14,6 +14,10 @@ const restitution = 0.75;// bounce energy: 1 = full, <1 = loses energy
 let lastEdgeToggleAt = 0;
 const edgeCooldownMs = 400;
 
+// --- background pulse ---
+let pulse = 0;                  // 0..1 intensity
+const pulseDecay = 0.90;        // decay per frame (0.85 = stronger, 0.95 = softer)
+
 // ---------- Web Audio (no p5.sound) ----------
 let AC = null;                 // AudioContext
 let masterGain = null;
@@ -205,6 +209,33 @@ function spawnVisuals(x,y,impact){
 }
 
 // -----------------------------------------------
+
+function drawBackgroundPulse() {
+  if (pulse <= 0.001) return;
+
+  // radial gradient that fades outwards from screen center
+  const ctx = drawingContext;
+  const cxp = width / 2, cyp = height / 2;
+  const maxR = Math.hypot(width, height);
+
+  // inverse of current bg for a nice contrast pulse
+  const inv = color(255 - red(bgColor), 255 - green(bgColor), 255 - blue(bgColor));
+  const r = red(inv), g = green(inv), b = blue(inv);
+  const a = 0.35 * pulse; // center alpha
+
+  const grad = ctx.createRadialGradient(cxp, cyp, 0, cxp, cyp, maxR);
+  grad.addColorStop(0, `rgba(${r},${g},${b},${a})`);
+  grad.addColorStop(1, `rgba(${r},${g},${b},0)`);
+
+  ctx.save();
+  ctx.fillStyle = grad;
+  ctx.fillRect(0, 0, width, height);
+  ctx.restore();
+
+  // decay
+  pulse *= pulseDecay;
+}
+
 function setup() {
   createCanvas(windowWidth, windowHeight);
   cx = width / 2;
@@ -254,6 +285,7 @@ async function requestAccess() {
 
 function draw() {
   background(bgColor);
+  drawBackgroundPulse();
 
   // draw and prune animations
   for (let i=animations.length-1;i>=0;i--){
@@ -291,6 +323,8 @@ function draw() {
     lastEdgeToggleAt = millis();
 
     const impact = Math.hypot(vx, vy);
+    // bump the background pulse (clamped)
+    pulse = min(1, pulse + map(impact, 0, 12, 0.25, 0.8, true));
     playCollisionSound(impact);
     spawnVisuals(cx, cy, impact);
   }
