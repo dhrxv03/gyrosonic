@@ -71,33 +71,137 @@ function playCollisionSound(speed) {
   try { src.start(); } catch(_) {}
 }
 
-// ---------- Minimal Patatap-style rings ----------
-const rings = [];
+// ---------- Patatap-style animations ----------
+const animations = [];
+const MAX_ANIMS = 120;
+
+const palettes = [
+  ["#00D1B2","#14FFEC","#00A6FB","#3C91E6","#1B2CC1"],
+  ["#FF3366","#FFBD00","#6BF178","#2D7DD2","#F79824"],
+  ["#B794F4","#8BD3E6","#FF90E8","#FDE24F","#00E8FC"],
+  ["#FF7F50","#7FFFD4","#F9F871","#BFFCC6","#B28DFF"]
+];
+let paletteIdx = 0;
+const randCol = () => color(random(palettes[paletteIdx]));
+
+// Easing helpers
+const easeOutQuad = (t)=>1-(1-t)*(1-t);
+const easeOutExpo = (t)=> t===1 ? 1 : 1 - Math.pow(2,-10*t);
+
+// RING
 class Ring {
   constructor(x,y,impact,col){
-    this.x=x; this.y=y;
-    this.life=0;
-    this.dur = 320 + impact*12;          // ms
+    this.x=x; this.y=y; this.life=0; this.col=col;
+    this.dur = 320 + impact*12;
     this.maxR= 36 + impact*6;
     this.w   = 2  + map(impact,0,12,1,4,true);
-    this.col = col;
   }
   draw(){
     const t = constrain(this.life/this.dur, 0, 1);
-    const k = t === 1 ? 1 : 1 - Math.pow(2, -10*t); // easeOutExpo
+    const k = easeOutExpo(t);
     noFill();
-    stroke(red(this.col), green(this.col), blue(this.col), 255*(1-t));
+    stroke(red(this.col),green(this.col),blue(this.col), 255*(1-t));
     strokeWeight(this.w*(1-t));
     circle(this.x, this.y, this.maxR*2*k);
     this.life += deltaTime;
     return t < 1;
   }
 }
-function spawnRings(x,y,impact){
-  const n = 2 + floor(map(impact,0,12,0,3,true));
-  for (let i=0;i<n;i++){
-    rings.push(new Ring(x,y,impact, color(0,0,0)));
+
+// CONFETTI
+class Confetti {
+  constructor(x,y,impact,col){
+    this.x=x; this.y=y; this.col=col; this.life=0;
+    this.vx = random(-2,2) * (1 + impact*0.08);
+    this.vy = random(-3,-0.5) * (1 + impact*0.06);
+    this.g  = 0.08;
+    this.rot = random(TWO_PI);
+    this.vr  = random(-0.2,0.2);
+    this.size = random(4,10);
+    this.dur = 500 + impact*20;
   }
+  draw(){
+    const t = constrain(this.life/this.dur, 0, 1);
+    this.vy += this.g;
+    this.x  += this.vx;
+    this.y  += this.vy;
+    this.rot += this.vr;
+    push();
+    translate(this.x, this.y);
+    rotate(this.rot);
+    noStroke();
+    fill(red(this.col),green(this.col),blue(this.col), 255*(1-t));
+    rectMode(CENTER);
+    rect(0,0,this.size,this.size*0.6,2);
+    pop();
+    this.life += deltaTime;
+    return t < 1;
+  }
+}
+
+// RAYS
+class Rays {
+  constructor(x,y,impact,col){
+    this.x=x; this.y=y; this.col=col; this.life=0;
+    this.n = 8 + floor(random(6)) + floor(impact);
+    this.len = 20 + impact*6;
+    this.dur = 300 + impact*10;
+  }
+  draw(){
+    const t = constrain(this.life/this.dur, 0, 1);
+    const k = easeOutQuad(t);
+    stroke(red(this.col),green(this.col),blue(this.col), 200*(1-t));
+    strokeWeight(2*(1-t));
+    for (let i=0;i<this.n;i++){
+      const a = (TWO_PI/this.n)*i + (1-k)*0.8;
+      const r0 = 8;
+      const r1 = r0 + this.len*(1-k);
+      line(this.x+cos(a)*r0, this.y+sin(a)*r0,
+           this.x+cos(a)*r1, this.y+sin(a)*r1);
+    }
+    this.life += deltaTime;
+    return t < 1;
+  }
+}
+
+// BLOB
+class Blob {
+  constructor(x,y,impact,col){
+    this.x=x; this.y=y; this.col=col; this.life=0;
+    this.rad = 12 + impact*4;
+    this.jit = 6  + impact*0.8;
+    this.pts = 16;
+    this.dur = 380 + impact*15;
+  }
+  draw(){
+    const t = constrain(this.life/this.dur, 0, 1);
+    const k = easeOutQuad(t);
+    noStroke();
+    fill(red(this.col),green(this.col),blue(this.col), 140*(1-t));
+    beginShape();
+    for (let i=0;i<this.pts;i++){
+      const a = (TWO_PI/this.pts)*i;
+      const r = this.rad*(1+k*0.6) + noise(i*0.2, t*3)*this.jit*(1-k);
+      vertex(this.x + cos(a)*r, this.y + sin(a)*r);
+    }
+    endShape(CLOSE);
+    this.life += deltaTime;
+    return t < 1;
+  }
+}
+
+function spawnVisuals(x,y,impact){
+  // choose 2–6 effects depending on impact
+  const count = 2 + floor(map(impact,0,12,0,4,true));
+  for (let i=0;i<count;i++){
+    const col = randCol();
+    const K = random([Ring, Confetti, Rays, Blob]);
+    animations.push(new K(x,y,impact,col));
+  }
+  // rotate palette sometimes
+  if (random() < 0.2) paletteIdx = (paletteIdx + 1) % palettes.length;
+  // cap to avoid overload on mobile
+  if (animations.length > MAX_ANIMS) animations.splice(0, animations.length - MAX_ANIMS);
 }
 
 // -----------------------------------------------
@@ -121,14 +225,12 @@ function setup() {
     btn.addEventListener("click", requestAccess, { once: true });
   } else {
     permissionGranted = true;
-    // No explicit button click → still allow audio init on first interaction?
-    // (We leave audio off in this path to avoid policy conflicts.)
+    // (Audio stays off until user interacts; we keep your simple flow.)
   }
 }
 
 async function requestAccess() {
   try {
-    // Request motion/orientation first
     const o = await DeviceOrientationEvent.requestPermission();
     let m = "denied";
     if (
@@ -139,7 +241,7 @@ async function requestAccess() {
     }
     if (o === "granted" || m === "granted") {
       permissionGranted = true;
-      // SAFARI SAFE: init audio & load samples **inside user gesture**
+      // init audio & load samples **inside user gesture**
       await initAudioAndLoad();
     }
   } catch (e) {
@@ -153,9 +255,9 @@ async function requestAccess() {
 function draw() {
   background(bgColor);
 
-  // draw and prune rings
-  for (let i=rings.length-1;i>=0;i--){
-    if (!rings[i].draw()) rings.splice(i,1);
+  // draw and prune animations
+  for (let i=animations.length-1;i>=0;i--){
+    if (!animations[i].draw()) animations.splice(i,1);
   }
 
   if (!permissionGranted) {
@@ -163,56 +265,34 @@ function draw() {
     return;
   }
 
-  // Use tilt to accelerate the ball; small deadzone for steadiness
+  // Use tilt to accelerate the ball
   const dx = constrain(rotationY || 0, -3, 3);
   const dy = constrain(rotationX || 0, -3, 3);
 
-  // add acceleration from tilt
+  // integrate motion
   vx += dx * accel;
   vy += dy * accel;
-
-  // apply damping/friction
   vx *= damping;
   vy *= damping;
-
-  // update position
   cx += vx;
   cy += vy;
 
   const r = ballSize / 2;
   let collided = false;
 
-  // left edge
-  if (cx < r) {
-    cx = r;
-    if (vx < 0) { vx = -vx * restitution; collided = true; }
-  }
-  // right edge
-  if (cx > width - r) {
-    cx = width - r;
-    if (vx > 0) { vx = -vx * restitution; collided = true; }
-  }
-  // top edge
-  if (cy < r) {
-    cy = r;
-    if (vy < 0) { vy = -vy * restitution; collided = true; }
-  }
-  // bottom edge
-  if (cy > height - r) {
-    cy = height - r;
-    if (vy > 0) { vy = -vy * restitution; collided = true; }
-  }
+  if (cx < r) { cx = r; if (vx < 0) { vx = -vx * restitution; collided = true; } }
+  if (cx > width - r) { cx = width - r; if (vx > 0) { vx = -vx * restitution; collided = true; } }
+  if (cy < r) { cy = r; if (vy < 0) { vy = -vy * restitution; collided = true; } }
+  if (cy > height - r) { cy = height - r; if (vy > 0) { vy = -vy * restitution; collided = true; } }
 
-  // swap colors + play sound + spawn rings once per collision burst
   if (collided && millis() - lastEdgeToggleAt > edgeCooldownMs) {
-    const tmp = ballColor;
-    ballColor = bgColor;
-    bgColor = tmp;
+    // swap colors
+    const tmp = ballColor; ballColor = bgColor; bgColor = tmp;
     lastEdgeToggleAt = millis();
 
     const impact = Math.hypot(vx, vy);
     playCollisionSound(impact);
-    spawnRings(cx, cy, impact);
+    spawnVisuals(cx, cy, impact);
   }
 
   noStroke();
