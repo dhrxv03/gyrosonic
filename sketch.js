@@ -12,46 +12,31 @@ let lastEdgeAt = 0;
 const edgeCooldownMs = 220;
 
 // UI
-let enableBtn = null, testBtn = null, statusEl = null;
+let enableBtn, testBtn, statusEl;
 const setStatus = (m)=>{ if(statusEl) statusEl.textContent = m; };
 
 // ====== WEB AUDIO (no p5.sound) ======
-let AC = null, masterGain = null;
+let AC = null;                 // AudioContext
+let masterGain = null;
 let buffers = [];              // decoded AudioBuffer[]
 let audioReady = false;
+
+// letters A–N (case-sensitive)
 const LETTERS = "ABCDEFGHIJKLMN".split("");
 
-// ====== Permission debug state ======
-let doPermResult = "n/a";
-let dmPermResult = "n/a";
-let orientationEvents = 0;
-let motionEvents = 0;
-
-// ====== Motion fallbacks & debug ======
-let doBeta = null, doGamma = null, haveDO = false;      // deviceorientation
-let dmAx = null, dmAy = null, haveDM = false;           // devicemotion (incl. gravity)
-let sourceUsed = "none";                                 // which source drove movement
-
-// simple HUD
-function drawHUD(rx, ry){
-  push();
-  noStroke(); fill(0, 160);
-  rect(10, height-74, 270, 64, 10);
-  fill(255); textSize(12);
-  text(
-    `src: ${sourceUsed}
-p5 rx=${nf(rx||0,1,2)}  ry=${nf(ry||0,1,2)}
-DO β=${nf(doBeta??0,1,2)} γ=${nf(doGamma??0,1,2)}
-DM ax=${nf(dmAx??0,1,2)} ay=${nf(dmAy??0,1,2)}`, 18, height-56
-  );
-  pop();
-}
-
-// ====== AUDIO LOADING / PLAYBACK ======
+// user-gesture init + load
 async function initAudioAndLoad() {
-  if (!AC) AC = new (window.AudioContext || window.webkitAudioContext)();
-  if (AC.state !== "running") { try { await AC.resume(); } catch(_){} }
-  if (!masterGain) { masterGain = AC.createGain(); masterGain.gain.value = 0.9; masterGain.connect(AC.destination); }
+  if (!AC) {
+    AC = new (window.AudioContext || window.webkitAudioContext)();
+  }
+  if (AC.state !== "running") {
+    try { await AC.resume(); } catch(_) {}
+  }
+  if (!masterGain) {
+    masterGain = AC.createGain();
+    masterGain.gain.value = 0.9;
+    masterGain.connect(AC.destination);
+  }
 
   setStatus("Loading sounds…");
   const loads = LETTERS.map(async (L, i) => {
@@ -61,8 +46,11 @@ async function initAudioAndLoad() {
       const ab = await res.arrayBuffer();
       const buf = await AC.decodeAudioData(ab);
       buffers[i] = buf;
-    } catch (e) { console.warn("Failed to load", L, e); }
+    } catch (e) {
+      console.warn("Failed to load", L, e);
+    }
   });
+
   await Promise.all(loads);
   const loadedCount = buffers.filter(Boolean).length;
   audioReady = loadedCount > 0;
@@ -72,10 +60,16 @@ async function initAudioAndLoad() {
 
 function playCollision(speed) {
   if (!audioReady || !AC) return;
-  if (AC.state !== "running") AC.resume().catch(()=>{});
 
+  if (AC.state !== "running") {
+    AC.resume().catch(()=>{});
+  }
+
+  // map speed -> playbackRate
   const t = constrain((speed - 1.5) / (12.0 - 1.5), 0, 1);
   const rate = lerp(0.75, 1.6, t);
+
+  // pick a random loaded buffer
   const loaded = buffers.filter(Boolean);
   if (!loaded.length) return;
   const buf = random(loaded);
@@ -84,13 +78,15 @@ function playCollision(speed) {
   src.buffer = buf;
   src.playbackRate.value = rate;
 
+  // per-hit gain (optional: map speed to loudness)
   const g = AC.createGain();
   g.gain.value = lerp(0.5, 1.0, t);
+
   src.connect(g).connect(masterGain);
   try { src.start(); } catch(_) {}
 }
 
-// ====== VISUALS (Patatap-ish) ======
+// ====== PATATAP-STYLE VISUALS ======
 const animations = [];
 const MAX_ANIMS = 120;
 const palettes = [
@@ -170,100 +166,38 @@ function setup() {
   testBtn   = document.getElementById("testBtn");
   statusEl  = document.getElementById("status");
 
-  if (enableBtn) enableBtn.addEventListener("click", onEnableClicked, { once: true });
-  if (testBtn)   testBtn.addEventListener("click", onTestSound);
+  enableBtn.addEventListener("click", onEnableClicked, { once: true });
+  testBtn.addEventListener("click", onTestSound);
 }
 
 async function onEnableClicked() {
-  // 0) Security + embed checks (status message only)
-  const isSecure = window.isSecureContext;
-  const isFramed = window.self !== window.top;
-  if (!isSecure) {
-    setStatus("This page is not HTTPS (secure context). Sensors will be blocked.");
-  }
-  if (isFramed) {
-    setStatus("This page is inside an iframe. Parent may block sensors.");
-  }
-
   // 1) Unlock audio + load buffers (user gesture)
   await initAudioAndLoad();
 
-  // 2) Attach listeners FIRST so we can detect if any events arrive
-  orientationEvents = 0;
-  motionEvents = 0;
-
-  const onDO = (e) => {
-    if (typeof e.beta === 'number' && typeof e.gamma === 'number') {
-      doBeta  = e.beta;
-      doGamma = e.gamma;
-      haveDO  = true;
-      orientationEvents++;
-      if (orientationEvents === 1) setStatus("deviceorientation OK. Tilt to move.");
-    }
-  };
-  const onDM = (e) => {
-    if (e && e.accelerationIncludingGravity) {
-      dmAx = e.accelerationIncludingGravity.x;
-      dmAy = e.accelerationIncludingGravity.y;
-      haveDM = true;
-      motionEvents++;
-      if (motionEvents === 1) setStatus("devicemotion OK. Tilt to move.");
-    }
-  };
-
-  window.addEventListener('deviceorientation', onDO, true);
-  window.addEventListener('devicemotion', onDM, true);
-
-  // 3) Try iOS permission API (Safari & Chrome on iOS use WebKit)
+  // 2) Request motion/orientation (iOS 13+)
   try {
     if (typeof DeviceOrientationEvent !== "undefined" &&
         typeof DeviceOrientationEvent.requestPermission === "function") {
-      doPermResult = await DeviceOrientationEvent.requestPermission();
-    } else {
-      doPermResult = "unsupported";
+      await DeviceOrientationEvent.requestPermission().catch(()=>{});
     }
-  } catch (e) {
-    doPermResult = "error";
-    console.warn("DeviceOrientationEvent.requestPermission error:", e);
-  }
-
-  try {
     if (typeof DeviceMotionEvent !== "undefined" &&
         typeof DeviceMotionEvent.requestPermission === "function") {
-      dmPermResult = await DeviceMotionEvent.requestPermission();
-    } else {
-      dmPermResult = "unsupported";
+      await DeviceMotionEvent.requestPermission().catch(()=>{});
     }
-  } catch (e) {
-    dmPermResult = "error";
-    console.warn("DeviceMotionEvent.requestPermission error:", e);
-  }
+  } catch(_) {}
 
-  // 4) Status readout so we KNOW the result
-  setStatus(`Perm — orientation: ${doPermResult}, motion: ${dmPermResult}. If stuck, enable Settings → Safari → Motion & Orientation Access.`);
-
-  // 5) Give Safari a moment to start delivering events; if nothing after 1s, nudge user
-  setTimeout(() => {
-    if (orientationEvents === 0 && motionEvents === 0) {
-      setStatus(`No sensor events yet.
-- Check Settings → Safari → Motion & Orientation Access (turn ON)
-- Reload and tap "Enable" again
-- Ensure not embedded in an iframe
-- Chrome iOS uses the same Safari setting`);
-    }
-  }, 1000);
-
-  // 6) Ready
   permissionGranted = true;
-  if (enableBtn) enableBtn.disabled = true;
+  enableBtn.disabled = true;
 }
 
 async function onTestSound() {
   if (!audioReady) { setStatus("Still loading or failed — check assets/ case."); return; }
   if (AC && AC.state !== "running") await AC.resume();
+  // play first loaded buffer
   const buf = buffers.find(Boolean);
   if (!buf) return;
-  const src = AC.createBufferSource(); src.buffer = buf;
+  const src = AC.createBufferSource();
+  src.buffer = buf;
   const g = AC.createGain(); g.gain.value = 1.0;
   src.connect(g).connect(masterGain);
   try { src.start(); } catch(_){}
@@ -283,40 +217,13 @@ function draw() {
     return;
   }
 
-  // Pick a motion source
-  const rx = (typeof rotationX === 'number') ? rotationX : 0;
-  const ry = (typeof rotationY === 'number') ? rotationY : 0;
+  const dx = constrain(rotationY || 0, -3, 3);
+  const dy = constrain(rotationX || 0, -3, 3);
 
-  let dx = 0, dy = 0;
-  if (Math.abs(rx) > 0.01 || Math.abs(ry) > 0.01) {
-    // p5 sensor data available
-    dx = constrain(ry, -3, 3);
-    dy = constrain(rx, -3, 3);
-    sourceUsed = "p5 rotation";
-  } else if (haveDO && doBeta !== null && doGamma !== null) {
-    // deviceorientation fallback
-    const scaledY = (doGamma / 45) * 3; // left/right
-    const scaledX = (doBeta  / 45) * 3; // front/back
-    dx = constrain(scaledY, -3, 3);
-    dy = constrain(scaledX, -3, 3);
-    sourceUsed = "deviceorientation";
-  } else if (haveDM && dmAx !== null && dmAy !== null) {
-    // devicemotion fallback (gravity). Signs vary by orientation; tweak if inverted.
-    const scaledY = (-dmAx / 3.0); // divide ~9.8 to get ~[-3..3], use smaller divisor for sensitivity
-    const scaledX = ( dmAy / 3.0);
-    dx = constrain(scaledY, -3, 3);
-    dy = constrain(scaledX, -3, 3);
-    sourceUsed = "devicemotion";
-  } else {
-    sourceUsed = "none";
-  }
-
-  // integrate physics
   vx += dx * accel; vy += dy * accel;
   vx *= damping; vy *= damping;
   cx += vx; cy += vy;
 
-  // collisions
   const r = ballSize/2;
   let collided = false;
   const impact = Math.hypot(vx, vy);
@@ -327,28 +234,18 @@ function draw() {
   if (cy > height - r) { cy = height - r; if (vy > 0){ collided = true; vy = -vy * restitution; } }
 
   if (collided && millis() - lastEdgeAt > edgeCooldownMs) {
+    // swap colors
     const tmp = ballColor; ballColor = bgColor; bgColor = tmp;
     lastEdgeAt = millis();
+
+    // visuals
     spawnVisuals(cx, cy, impact);
+
+    // audio
     playCollision(impact);
   }
 
-  // ball
   noStroke(); fill(ballColor); ellipse(cx, cy, ballSize);
-
-  // HUD (comment out if you don’t want it)
-  drawHUD(rx, ry);
-
-  // extra debug strip (secure / framed / perms / counts)
-  push();
-  noStroke(); fill(0,150);
-  rect(10, height - 120, 300, 38, 8);
-  fill(255); textSize(12);
-  text(
-    `secure:${window.isSecureContext} framed:${window.self!==window.top}  perm(O:${doPermResult}/M:${dmPermResult}) evts(O:${orientationEvents}/M:${motionEvents})`,
-    18, height - 100
-  );
-  pop();
 }
 
 function windowResized(){ resizeCanvas(windowWidth, windowHeight); }
