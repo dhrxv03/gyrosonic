@@ -24,6 +24,11 @@ let audioReady = false;
 // letters A–N (case-sensitive)
 const LETTERS = "ABCDEFGHIJKLMN".split("");
 
+// ====== (A) Manual deviceorientation fallback (Safari) ======
+let doBeta = null;   // tilt forward/back (X)  ≈ [-180..180]
+let doGamma = null;  // tilt left/right (Y)    ≈ [-90..90]
+let haveDO = false;
+
 // user-gesture init + load
 async function initAudioAndLoad() {
   if (!AC) {
@@ -186,6 +191,15 @@ async function onEnableClicked() {
     }
   } catch(_) {}
 
+  // ====== (B) Start raw deviceorientation listener (Safari fallback) ======
+  window.addEventListener('deviceorientation', (e) => {
+    if (typeof e.beta === 'number' && typeof e.gamma === 'number') {
+      doBeta  = e.beta;
+      doGamma = e.gamma;
+      haveDO = true;
+    }
+  }, true);
+
   permissionGranted = true;
   enableBtn.disabled = true;
 }
@@ -217,9 +231,26 @@ function draw() {
     return;
   }
 
-  const dx = constrain(rotationY || 0, -3, 3);
-  const dy = constrain(rotationX || 0, -3, 3);
+  // ====== (C) Choose motion source: p5 rotationX/Y OR deviceorientation fallback ======
+  let dx, dy;
+  const rx = (typeof rotationX === 'number') ? rotationX : 0;
+  const ry = (typeof rotationY === 'number') ? rotationY : 0;
 
+  if (Math.abs(rx) > 0.01 || Math.abs(ry) > 0.01) {
+    // p5 is providing sensor data
+    dx = constrain(ry, -3, 3);
+    dy = constrain(rx, -3, 3);
+  } else if (haveDO && doBeta !== null && doGamma !== null) {
+    // Safari fallback: map raw beta/gamma to our control range
+    const scaledY = (doGamma / 45) * 3; // -45..45 deg -> roughly -3..3
+    const scaledX = (doBeta  / 45) * 3; // same mapping
+    dx = constrain(scaledY, -3, 3);
+    dy = constrain(scaledX, -3, 3);
+  } else {
+    dx = 0; dy = 0; // nothing yet
+  }
+
+  // integrate physics
   vx += dx * accel; vy += dy * accel;
   vx *= damping; vy *= damping;
   cx += vx; cy += vy;
