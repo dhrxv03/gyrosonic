@@ -12,36 +12,40 @@ let lastEdgeAt = 0;
 const edgeCooldownMs = 220;
 
 // UI
-let enableBtn, testBtn, statusEl;
+let enableBtn = null, testBtn = null, statusEl = null;
 const setStatus = (m)=>{ if(statusEl) statusEl.textContent = m; };
 
 // ====== WEB AUDIO (no p5.sound) ======
-let AC = null;                 // AudioContext
-let masterGain = null;
+let AC = null, masterGain = null;
 let buffers = [];              // decoded AudioBuffer[]
 let audioReady = false;
-
-// letters A–N (case-sensitive)
 const LETTERS = "ABCDEFGHIJKLMN".split("");
 
-// ====== (A) Manual deviceorientation fallback (Safari) ======
-let doBeta = null;   // tilt forward/back (X)  ≈ [-180..180]
-let doGamma = null;  // tilt left/right (Y)    ≈ [-90..90]
-let haveDO = false;
+// ====== Motion fallbacks & debug ======
+let doBeta = null, doGamma = null, haveDO = false;      // deviceorientation
+let dmAx = null, dmAy = null, haveDM = false;           // devicemotion (incl. gravity)
+let sourceUsed = "none";                                 // which source drove movement
 
-// user-gesture init + load
+// simple HUD
+function drawHUD(rx, ry){
+  push();
+  noStroke(); fill(0, 160);
+  rect(10, height-74, 270, 64, 10);
+  fill(255); textSize(12);
+  text(
+    `src: ${sourceUsed}
+p5 rx=${nf(rx||0,1,2)}  ry=${nf(ry||0,1,2)}
+DO β=${nf(doBeta??0,1,2)} γ=${nf(doGamma??0,1,2)}
+DM ax=${nf(dmAx??0,1,2)} ay=${nf(dmAy??0,1,2)}`, 18, height-56
+  );
+  pop();
+}
+
+// ====== AUDIO LOADING / PLAYBACK ======
 async function initAudioAndLoad() {
-  if (!AC) {
-    AC = new (window.AudioContext || window.webkitAudioContext)();
-  }
-  if (AC.state !== "running") {
-    try { await AC.resume(); } catch(_) {}
-  }
-  if (!masterGain) {
-    masterGain = AC.createGain();
-    masterGain.gain.value = 0.9;
-    masterGain.connect(AC.destination);
-  }
+  if (!AC) AC = new (window.AudioContext || window.webkitAudioContext)();
+  if (AC.state !== "running") { try { await AC.resume(); } catch(_){} }
+  if (!masterGain) { masterGain = AC.createGain(); masterGain.gain.value = 0.9; masterGain.connect(AC.destination); }
 
   setStatus("Loading sounds…");
   const loads = LETTERS.map(async (L, i) => {
@@ -51,11 +55,8 @@ async function initAudioAndLoad() {
       const ab = await res.arrayBuffer();
       const buf = await AC.decodeAudioData(ab);
       buffers[i] = buf;
-    } catch (e) {
-      console.warn("Failed to load", L, e);
-    }
+    } catch (e) { console.warn("Failed to load", L, e); }
   });
-
   await Promise.all(loads);
   const loadedCount = buffers.filter(Boolean).length;
   audioReady = loadedCount > 0;
@@ -65,16 +66,10 @@ async function initAudioAndLoad() {
 
 function playCollision(speed) {
   if (!audioReady || !AC) return;
+  if (AC.state !== "running") AC.resume().catch(()=>{});
 
-  if (AC.state !== "running") {
-    AC.resume().catch(()=>{});
-  }
-
-  // map speed -> playbackRate
   const t = constrain((speed - 1.5) / (12.0 - 1.5), 0, 1);
   const rate = lerp(0.75, 1.6, t);
-
-  // pick a random loaded buffer
   const loaded = buffers.filter(Boolean);
   if (!loaded.length) return;
   const buf = random(loaded);
@@ -83,15 +78,13 @@ function playCollision(speed) {
   src.buffer = buf;
   src.playbackRate.value = rate;
 
-  // per-hit gain (optional: map speed to loudness)
   const g = AC.createGain();
   g.gain.value = lerp(0.5, 1.0, t);
-
   src.connect(g).connect(masterGain);
   try { src.start(); } catch(_) {}
 }
 
-// ====== PATATAP-STYLE VISUALS ======
+// ====== VISUALS (Patatap-ish) ======
 const animations = [];
 const MAX_ANIMS = 120;
 const palettes = [
@@ -171,8 +164,8 @@ function setup() {
   testBtn   = document.getElementById("testBtn");
   statusEl  = document.getElementById("status");
 
-  enableBtn.addEventListener("click", onEnableClicked, { once: true });
-  testBtn.addEventListener("click", onTestSound);
+  if (enableBtn) enableBtn.addEventListener("click", onEnableClicked, { once: true });
+  if (testBtn)   testBtn.addEventListener("click", onTestSound);
 }
 
 async function onEnableClicked() {
@@ -191,7 +184,7 @@ async function onEnableClicked() {
     }
   } catch(_) {}
 
-  // ====== (B) Start raw deviceorientation listener (Safari fallback) ======
+  // 3) Attach BOTH fallbacks
   window.addEventListener('deviceorientation', (e) => {
     if (typeof e.beta === 'number' && typeof e.gamma === 'number') {
       doBeta  = e.beta;
@@ -200,18 +193,27 @@ async function onEnableClicked() {
     }
   }, true);
 
+  window.addEventListener('devicemotion', (e) => {
+    if (e && e.accelerationIncludingGravity) {
+      // Safari gives m/s^2; scale to [-3..3] later
+      dmAx = e.accelerationIncludingGravity.x; // left/right
+      dmAy = e.accelerationIncludingGravity.y; // front/back
+      haveDM = true;
+    }
+  }, true);
+
   permissionGranted = true;
-  enableBtn.disabled = true;
+  if (enableBtn) enableBtn.disabled = true;
+
+  setStatus("Sensors enabled. If Safari still doesn't move, check Settings → Safari → Motion & Orientation Access (ON).");
 }
 
 async function onTestSound() {
   if (!audioReady) { setStatus("Still loading or failed — check assets/ case."); return; }
   if (AC && AC.state !== "running") await AC.resume();
-  // play first loaded buffer
   const buf = buffers.find(Boolean);
   if (!buf) return;
-  const src = AC.createBufferSource();
-  src.buffer = buf;
+  const src = AC.createBufferSource(); src.buffer = buf;
   const g = AC.createGain(); g.gain.value = 1.0;
   src.connect(g).connect(masterGain);
   try { src.start(); } catch(_){}
@@ -231,23 +233,32 @@ function draw() {
     return;
   }
 
-  // ====== (C) Choose motion source: p5 rotationX/Y OR deviceorientation fallback ======
-  let dx, dy;
+  // Pick a motion source
   const rx = (typeof rotationX === 'number') ? rotationX : 0;
   const ry = (typeof rotationY === 'number') ? rotationY : 0;
 
+  let dx = 0, dy = 0;
   if (Math.abs(rx) > 0.01 || Math.abs(ry) > 0.01) {
-    // p5 is providing sensor data
+    // p5 sensor data available
     dx = constrain(ry, -3, 3);
     dy = constrain(rx, -3, 3);
+    sourceUsed = "p5 rotation";
   } else if (haveDO && doBeta !== null && doGamma !== null) {
-    // Safari fallback: map raw beta/gamma to our control range
-    const scaledY = (doGamma / 45) * 3; // -45..45 deg -> roughly -3..3
-    const scaledX = (doBeta  / 45) * 3; // same mapping
+    // deviceorientation fallback
+    const scaledY = (doGamma / 45) * 3; // left/right
+    const scaledX = (doBeta  / 45) * 3; // front/back
     dx = constrain(scaledY, -3, 3);
     dy = constrain(scaledX, -3, 3);
+    sourceUsed = "deviceorientation";
+  } else if (haveDM && dmAx !== null && dmAy !== null) {
+    // devicemotion fallback (gravity). Signs vary by orientation; tweak if inverted.
+    const scaledY = (-dmAx / 3.0); // divide ~9.8 to get ~[-3..3], use smaller divisor for sensitivity
+    const scaledX = ( dmAy / 3.0);
+    dx = constrain(scaledY, -3, 3);
+    dy = constrain(scaledX, -3, 3);
+    sourceUsed = "devicemotion";
   } else {
-    dx = 0; dy = 0; // nothing yet
+    sourceUsed = "none";
   }
 
   // integrate physics
@@ -255,6 +266,7 @@ function draw() {
   vx *= damping; vy *= damping;
   cx += vx; cy += vy;
 
+  // collisions
   const r = ballSize/2;
   let collided = false;
   const impact = Math.hypot(vx, vy);
@@ -265,18 +277,17 @@ function draw() {
   if (cy > height - r) { cy = height - r; if (vy > 0){ collided = true; vy = -vy * restitution; } }
 
   if (collided && millis() - lastEdgeAt > edgeCooldownMs) {
-    // swap colors
     const tmp = ballColor; ballColor = bgColor; bgColor = tmp;
     lastEdgeAt = millis();
-
-    // visuals
     spawnVisuals(cx, cy, impact);
-
-    // audio
     playCollision(impact);
   }
 
+  // ball
   noStroke(); fill(ballColor); ellipse(cx, cy, ballSize);
+
+  // HUD (comment out if you don’t want it)
+  drawHUD(rx, ry);
 }
 
 function windowResized(){ resizeCanvas(windowWidth, windowHeight); }
