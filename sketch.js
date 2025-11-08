@@ -225,6 +225,16 @@ function drawBackgroundPulse() {
   pulse *= pulseDecay;
 }
 
+// ===== Flick impulse via devicemotion =====
+let haveDM = false;
+let pendingImpulseX = 0;       // accumulated impulse to apply next frame
+const FLICK_THRESH = 7.0;      // m/s^2 threshold to count as a flick
+const FLICK_GAIN   = 0.35;     // scales how strong the flick becomes
+const FLICK_COOLDOWN = 220;    // ms between flicks
+let lastFlickAt = 0;
+// If your axis feels inverted, flip sign to -1
+const FLICK_SIGN = 1;
+
 function setup() {
   createCanvas(windowWidth, windowHeight);
   cx = width / 2;
@@ -262,6 +272,21 @@ async function requestAccess() {
     if (o === "granted" || m === "granted") {
       permissionGranted = true;
       await initAudioAndLoad(); // in gesture
+
+      // Attach devicemotion listener for flicks
+      window.addEventListener('devicemotion', (e) => {
+        if (!e || !e.accelerationIncludingGravity) return;
+        const ax = e.accelerationIncludingGravity.x || 0; // left/right accel (m/s^2)
+        haveDM = true;
+
+        // detect sharp spikes as flicks
+        const now = Date.now();
+        if (Math.abs(ax) > FLICK_THRESH && (now - lastFlickAt) > FLICK_COOLDOWN) {
+          // add an impulse to be applied next frame
+          pendingImpulseX += FLICK_SIGN * ax * FLICK_GAIN;
+          lastFlickAt = now;
+        }
+      }, true);
     }
   } catch (e) {
     // ignore
@@ -285,12 +310,20 @@ function draw() {
     return;
   }
 
-  // tilt to accelerate
+  // tilt-driven acceleration
   const dx = constrain(rotationY || 0, -3, 3);
   const dy = constrain(rotationX || 0, -3, 3);
 
   vx += dx * accel;
   vy += dy * accel;
+
+  // apply any flick impulse captured from devicemotion
+  if (pendingImpulseX !== 0) {
+    vx += pendingImpulseX;
+    pendingImpulseX = 0;
+  }
+
+  // damping & integrate
   vx *= damping;
   vy *= damping;
   cx += vx;
