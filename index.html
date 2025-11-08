@@ -4,76 +4,17 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
     <title>GyroSonic</title>
+
+    <!-- p5.js -->
     <script src="https://cdn.jsdelivr.net/npm/p5@1.9.0/lib/p5.min.js"></script>
-    <style>
-      :root {
-        --bg: #0b0c10;
-        --text: #f7f7f8;
-        --muted: #b8c0cc;
-        --border: rgba(255,255,255,0.12);
-      }
-      html, body {
-        margin: 0; padding: 0; height: 100%;
-        background: var(--bg); color: var(--text);
-        font-family: system-ui, -apple-system, Segoe UI, Roboto, Inter, sans-serif;
-        -webkit-tap-highlight-color: transparent;
-      }
-      /* Top title */
-      .titlebar {
-        position: fixed; top: env(safe-area-inset-top, 12px); left: 0; right: 0;
-        display: flex; justify-content: center; pointer-events: none;
-        padding: 12px 16px; z-index: 20;
-      }
-      .titlebar h1 {
-        margin: 0; font-weight: 700; letter-spacing: 0.4px;
-        font-size: clamp(18px, 4vw, 28px);
-        text-shadow: 0 2px 20px rgba(255,255,255,0.15);
-      }
 
-      /* Centered stack (no card) */
-      .panel {
-        position: fixed;
-        inset: 0;
-        display: grid;
-        place-items: center;
-        z-index: 15;
-        background: #000; /* 👈 solid black overlay while waiting for permission */
-      }
-      .stack {
-        width: min(92vw, 520px);
-        text-align: center;
-      }
-      .stack p {
-        margin: 10px 0 0; color: var(--muted);
-        font-size: 14px; line-height: 1.45;
-      }
-      button {
-        font: 600 16px/1 system-ui, -apple-system, Segoe UI, Roboto, Inter, sans-serif;
-        padding: 12px 16px; border-radius: 12px; cursor: pointer;
-        border: 1px solid var(--border);
-        background: #fff; color: #111;
-        transition: transform .06s ease, filter .2s ease, opacity .2s ease;
-      }
-      button:active { transform: translateY(1px) scale(0.99); }
-
-      /* Floating Stop/Resume */
-      .floating-controls {
-        position: fixed; left: 50%; transform: translateX(-50%);
-        bottom: calc(env(safe-area-inset-bottom, 12px) + 12px);
-        display: flex; gap: 10px; z-index: 20;
-      }
-      .ghost {
-        background: transparent; color: var(--text);
-        border: 1px solid var(--border);
-      }
-
-      canvas { display: block; position: relative; z-index: 1; }
-    </style>
+    <!-- external CSS -->
+    <link rel="stylesheet" href="./style.css" />
   </head>
   <body>
     <div class="titlebar"><h1>GyroSonic</h1></div>
 
-    <!-- Centered: just the button + message (no card) -->
+    <!-- centered enable motion screen -->
     <div id="panel" class="panel" hidden>
       <div class="stack">
         <button id="btn">Enable motion sensors</button>
@@ -81,7 +22,7 @@
       </div>
     </div>
 
-    <!-- Floating control shown AFTER permission -->
+    <!-- floating stop/resume -->
     <div id="controls" class="floating-controls" hidden>
       <button id="stop" class="ghost">Stop</button>
       <button id="resume" hidden>Resume</button>
