@@ -361,20 +361,30 @@ function setup() {
 }
 
 async function requestAccess() {
+  // Immediately hide button + message for a clean feel
+  if (btn) btn.hidden = true;
+  if (hint) { hint.textContent = "Requesting permission… If nothing happens, try again."; }
+
   try {
-    const o = await DeviceOrientationEvent.requestPermission();
+    const o = (typeof DeviceOrientationEvent !== "undefined" &&
+               typeof DeviceOrientationEvent.requestPermission === "function")
+              ? await DeviceOrientationEvent.requestPermission()
+              : "granted";
+
     let m = "denied";
-    if (
-      typeof DeviceMotionEvent !== "undefined" &&
-      typeof DeviceMotionEvent.requestPermission === "function"
-    ) {
+    if (typeof DeviceMotionEvent !== "undefined" &&
+        typeof DeviceMotionEvent.requestPermission === "function") {
       m = await DeviceMotionEvent.requestPermission();
+    } else {
+      // if no API, treat as granted for non-iOS
+      m = "granted";
     }
+
     if (o === "granted" || m === "granted") {
       permissionGranted = true;
-      await initAudioAndLoad(); // keep inside user gesture
+      await initAudioAndLoad(); // keep inside gesture
 
-      // devicemotion for flicks
+      // devicemotion for flicks (keep your existing listener if already present)
       window.addEventListener('devicemotion', (e) => {
         if (!e || !e.accelerationIncludingGravity) return;
         const ax = e.accelerationIncludingGravity.x || 0;
@@ -385,15 +395,25 @@ async function requestAccess() {
         }
       }, true);
 
-      // UI transitions
-      panel.hidden = true;
-      controls.hidden = false;
+      // Success: hide the whole panel, show controls
+      if (panel) panel.hidden = true;
+      if (controls) controls.hidden = false;
       wireControlButtons();
+      return;
     }
-  } catch (e) {
+
+    // If not granted, fall through to the finally block to restore UI
+  } catch (_) {
     // ignore
   } finally {
-    if (btn) btn.disabled = true; // prevent double-tap
+    if (!permissionGranted) {
+      // Bring back the button so the user can try again
+      if (btn) { btn.hidden = false; btn.disabled = false; }
+      if (hint) { hint.textContent = "Permission was not granted. Tap the button again."; }
+    } else {
+      // If granted but we reached finally, make sure panel is gone
+      if (panel) panel.hidden = true;
+    }
   }
 }
 
