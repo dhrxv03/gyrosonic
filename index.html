@@ -32,7 +32,12 @@
 
       /* Centered stack (no card) */
       .panel {
-        position: fixed; inset: 0; display: grid; place-items: center; z-index: 15;
+        position: fixed;
+        inset: 0;
+        display: grid;
+        place-items: center;
+        z-index: 15;
+        background: #000; /* 👈 solid black overlay while waiting for permission */
       }
       .stack {
         width: min(92vw, 520px);

@@ -449,10 +449,9 @@ function draw() {
   }
 
   if (!permissionGranted) {
-    // draw a small frame to hint UI is waiting
-    noFill(); stroke(255); rect(16, 16, 260, 70, 12);
-    return;
-  }
+  background(0); // 👈 keep black before enabling
+  return;
+}
 
   // if paused: render ball only (no physics)
   if (!running) {
