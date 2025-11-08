@@ -4,27 +4,110 @@
     <meta charset="utf-8" />
     <meta
       name="viewport"
-      content="width=device-width, initial-scale=1, viewport-fit=cover"
-    />
-    <title>p5 Motion / Orientation (iOS 26+)</title>
+      content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <title>GyroSonic</title>
+
     <!-- p5.js (core) -->
     <script src="https://cdn.jsdelivr.net/npm/p5@1.9.0/lib/p5.min.js"></script>
+
     <style>
-      html, body { margin: 0; padding: 0; height: 100%; background:#fff; }
-      #hint {
-        position: fixed; left: 20px; top: 70px; font: 16px/1.4 system-ui, sans-serif;
-        background: rgba(255,255,255,0.9); padding: 8px 10px; border-radius: 10px;
+      :root {
+        --bg: #0b0c10;
+        --text: #f7f7f8;
+        --muted: #b8c0cc;
+        --card: rgba(255,255,255,0.06);
+        --border: rgba(255,255,255,0.12);
+        --btn: #ffffff;
+        --btnText: #111;
       }
-      #btn {
-        position: fixed; left: 20px; top: 20px; font: 16px system-ui, sans-serif;
-        padding: 10px 14px; border-radius: 10px; border: 1px solid #ccc; background: #fff;
+      html, body {
+        margin: 0; padding: 0; height: 100%;
+        background: var(--bg); color: var(--text);
+        -webkit-tap-highlight-color: transparent;
+        font-family: system-ui, -apple-system, Segoe UI, Roboto, Inter, sans-serif;
       }
+      /* Title */
+      .titlebar {
+        position: fixed; top: env(safe-area-inset-top, 12px); left: 0; right: 0;
+        display: flex; justify-content: center; pointer-events: none;
+        padding: 12px 16px; z-index: 20;
+      }
+      .titlebar h1 {
+        margin: 0; font-weight: 700; letter-spacing: 0.4px;
+        font-size: clamp(18px, 4vw, 28px);
+        text-shadow: 0 2px 20px rgba(255,255,255,0.15);
+      }
+
+      /* Centered panel */
+      .panel {
+        position: fixed; inset: 0; display: grid; place-items: center; z-index: 15;
+      }
+      .card {
+        width: min(92vw, 520px);
+        background: var(--card);
+        border: 1px solid var(--border);
+        border-radius: 16px;
+        padding: 22px 20px;
+        backdrop-filter: blur(8px);
+        box-shadow: 0 10px 40px rgba(0,0,0,0.35);
+        text-align: center;
+      }
+      .card h2 {
+        margin: 6px 0 14px; font-size: 20px; font-weight: 600; color: var(--text);
+      }
+      .card p {
+        margin: 10px 0 0; color: var(--muted);
+        font-size: 14px; line-height: 1.45;
+      }
+      .actions {
+        display: flex; gap: 12px; justify-content: center; margin-top: 8px;
+      }
+      button {
+        font: 600 16px/1 system-ui, -apple-system, Segoe UI, Roboto, Inter, sans-serif;
+        padding: 12px 16px; border-radius: 12px; cursor: pointer;
+        border: 1px solid var(--border);
+        background: var(--btn); color: var(--btnText);
+        transition: transform .06s ease, filter .2s ease, opacity .2s ease;
+      }
+      button:active { transform: translateY(1px) scale(0.99); }
+      .ghost {
+        background: transparent; color: var(--text);
+        border: 1px solid var(--border);
+      }
+
+      /* Floating Stop / Resume when playing */
+      .floating-controls {
+        position: fixed; left: 50%; transform: translateX(-50%);
+        bottom: calc(env(safe-area-inset-bottom, 12px) + 12px);
+        display: flex; gap: 10px; z-index: 20;
+      }
+
+      /* Canvas sits behind UI */
+      canvas { display: block; position: relative; z-index: 1; }
     </style>
   </head>
   <body>
-    <!-- Optional helper elements for UX -->
-    <button id="btn" hidden>Enable motion / orientation</button>
-    <div id="hint" hidden>Tap the button above, then tilt your phone.</div>
+    <!-- Top center title -->
+    <div class="titlebar"><h1>GyroSonic</h1></div>
+
+    <!-- Center card shown BEFORE permission -->
+    <div id="panel" class="panel" hidden>
+      <div class="card">
+        <h2>Enable Motion Sensors</h2>
+        <div class="actions">
+          <button id="btn">Enable motion sensors</button>
+        </div>
+        <p id="hint">
+          Lock your screen orientation, tap the button above, and enjoy.
+        </p>
+      </div>
+    </div>
+
+    <!-- Floating control shown AFTER permission -->
+    <div id="controls" class="floating-controls" hidden>
+      <button id="stop" class="ghost">Stop</button>
+      <button id="resume" hidden>Resume</button>
+    </div>
 
     <script src="./sketch.js"></script>
   </body>

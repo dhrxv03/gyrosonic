@@ -1,27 +1,32 @@
+// ================== STATE & UI ==================
 let permissionGranted = false;
+let running = true;             // Stop/Resume
+
 let cx, cy;
-let vx = 0, vy = 0;      // velocity
-let btn, hint;
+let vx = 0, vy = 0;             // velocity
 let ballColor, bgColor;
 let ballSize = 80;
 
-// physics
-const accel = 0.15;
-const damping = 0.985;
-const restitution = 0.75;
+// UI refs (wired in setup)
+let panel, controls, btn, hint, stopBtn, resumeBtn;
+
+// ================== PHYSICS =====================
+const accel = 0.15;             // tilt -> accel
+const damping = 0.985;          // friction
+const restitution = 0.75;       // bounce energy
 
 // debounce for color/sound
 let lastEdgeToggleAt = 0;
 const edgeCooldownMs = 400;
 
-// --- background pulse ---
-let pulse = 0;                 // 0..1
-const pulseDecay = 0.90;       // lower = stronger/longer
+// ================== BACKGROUND PULSE ============
+let pulse = 0;                  // 0..1
+const pulseDecay = 0.90;        // lower = stronger/longer
 
-// ---------- Web Audio (no p5.sound) ----------
+// ================== AUDIO (Web Audio, no p5.sound) ===
 let AC = null;
 let masterGain = null;
-let buffers = [];              // AudioBuffer[]
+let buffers = [];               // AudioBuffer[]
 let audioReady = false;
 const LETTERS = "ABCDEFGHIJKLMN".split("");
 
@@ -54,9 +59,8 @@ function playCollisionSound(speed) {
   if (!audioReady || !AC) return;
   if (AC.state !== "running") { AC.resume().catch(()=>{}); }
 
-  // speed -> playbackRate
   const t = constrain((speed - 1.5) / (12.0 - 1.5), 0, 1);
-  const rate = lerp(0.8, 1.6, t);
+  const rate = lerp(0.8, 1.6, t);  // harder hit -> higher pitch
 
   const loaded = buffers.filter(Boolean);
   if (!loaded.length) return;
@@ -67,13 +71,13 @@ function playCollisionSound(speed) {
   src.playbackRate.value = rate;
 
   const g = AC.createGain();
-  g.gain.value = lerp(0.5, 1.0, t); // louder on harder hits
+  g.gain.value = lerp(0.5, 1.0, t);
   src.connect(g).connect(masterGain);
 
   try { src.start(); } catch(_) {}
 }
 
-// ---------- Patatap-style animations ----------
+// ================== VISUALS (Patatap-ish) ============
 const animations = [];
 const MAX_ANIMS = 160;
 
@@ -85,10 +89,11 @@ const palettes = [
 ];
 let paletteIdx = 0;
 const randCol = () => color(random(palettes[paletteIdx]));
+
 const easeOutQuad = (t)=>1-(1-t)*(1-t);
 const easeOutExpo = (t)=> t===1 ? 1 : 1 - Math.pow(2,-10*t);
 
-// RING
+// --- Effects ---
 class Ring {
   constructor(x,y,impact,col){
     this.x=x; this.y=y; this.life=0; this.col=col;
@@ -107,8 +112,6 @@ class Ring {
     return t < 1;
   }
 }
-
-// CONFETTI
 class Confetti {
   constructor(x,y,impact,col){
     this.x=x; this.y=y; this.col=col; this.life=0;
@@ -138,8 +141,6 @@ class Confetti {
     return t < 1;
   }
 }
-
-// RAYS
 class Rays {
   constructor(x,y,impact,col){
     this.x=x; this.y=y; this.col=col; this.life=0;
@@ -154,28 +155,21 @@ class Rays {
     strokeWeight(2*(1-t));
     for (let i=0;i<this.n;i++){
       const a = (TWO_PI/this.n)*i + (1-k)*0.8;
-      const r0 = 8;
-      const r1 = r0 + this.len*(1-k);
-      line(this.x+cos(a)*r0, this.y+sin(a)*r0,
-           this.x+cos(a)*r1, this.y+sin(a)*r1);
+      const r0 = 8, r1 = r0 + this.len*(1-k);
+      line(this.x+cos(a)*r0, this.y+sin(a)*r0, this.x+cos(a)*r1, this.y+sin(a)*r1);
     }
     this.life += deltaTime;
     return t < 1;
   }
 }
-
-// BLOB
 class Blob {
   constructor(x,y,impact,col){
     this.x=x; this.y=y; this.col=col; this.life=0;
-    this.rad = 12 + impact*4;
-    this.jit = 6  + impact*0.8;
-    this.pts = 16;
+    this.rad = 12 + impact*4; this.jit = 6 + impact*0.8; this.pts = 16;
     this.dur = 380 + impact*15;
   }
   draw(){
-    const t = constrain(this.life/this.dur, 0, 1);
-    const k = easeOutQuad(t);
+    const t = constrain(this.life/this.dur, 0, 1), k = easeOutQuad(t);
     noStroke();
     fill(red(this.col),green(this.col),blue(this.col), 140*(1-t));
     beginShape();
@@ -189,153 +183,112 @@ class Blob {
     return t < 1;
   }
 }
-
-// --- NEW EFFECTS ---
-
-// SPARK (glow particles)
+// New effects
 class Spark {
   constructor(x,y,impact,col){
     this.x=x; this.y=y; this.col=col; this.life=0;
     const sp = 1.5 + impact*0.15;
-    this.vx = random(-sp, sp);
-    this.vy = random(-sp, sp);
+    this.vx = random(-sp, sp); this.vy = random(-sp, sp);
     this.size = random(2,4) + impact*0.1;
     this.dur = 280 + impact*10;
   }
   draw(){
     const t = constrain(this.life/this.dur, 0, 1);
     this.x += this.vx; this.y += this.vy;
-    noStroke();
-    fill(red(this.col),green(this.col),blue(this.col), 240*(1-t));
+    noStroke(); fill(red(this.col),green(this.col),blue(this.col), 240*(1-t));
     circle(this.x, this.y, this.size*(1-t*0.5));
-    this.life += deltaTime;
-    return t < 1;
+    this.life += deltaTime; return t < 1;
   }
 }
-
-// TRIBURST (flying triangles)
 class TriBurst {
   constructor(x,y,impact,col){
     this.x=x; this.y=y; this.col=col; this.life=0;
     const sp = 2 + impact*0.2;
-    this.vx = random(-sp, sp);
-    this.vy = random(-sp, sp);
-    this.rot = random(TWO_PI);
-    this.vr  = random(-0.15,0.15);
-    this.size= 8 + impact*0.8;
-    this.dur = 420 + impact*18;
+    this.vx = random(-sp, sp); this.vy = random(-sp, sp);
+    this.rot = random(TWO_PI); this.vr = random(-0.15,0.15);
+    this.size= 8 + impact*0.8; this.dur = 420 + impact*18;
   }
   draw(){
     const t = constrain(this.life/this.dur, 0, 1);
     this.x += this.vx; this.y += this.vy; this.rot += this.vr;
-    push();
-    translate(this.x, this.y);
-    rotate(this.rot);
-    noStroke();
-    fill(red(this.col),green(this.col),blue(this.col), 230*(1-t));
+    push(); translate(this.x, this.y); rotate(this.rot);
+    noStroke(); fill(red(this.col),green(this.col),blue(this.col), 230*(1-t));
     triangle(-this.size, this.size*0.6, this.size, this.size*0.6, 0, -this.size);
-    pop();
-    this.life += deltaTime;
-    return t < 1;
+    pop(); this.life += deltaTime; return t < 1;
   }
 }
-
-// WAVERING (multi concentric rings)
 class WaveRing {
   constructor(x,y,impact,col){
     this.x=x; this.y=y; this.col=col; this.life=0;
     this.rings = 3 + floor(random(3));
-    this.baseR = 14 + impact*2;
-    this.spread = 16 + impact*2.5;
+    this.baseR = 14 + impact*2; this.spread = 16 + impact*2.5;
     this.dur = 420 + impact*20;
   }
   draw(){
-    const t = constrain(this.life/this.dur, 0, 1);
-    const k = easeOutExpo(t);
-    noFill();
-    const alpha = 220*(1-t);
+    const t = constrain(this.life/this.dur, 0, 1), k = easeOutExpo(t);
+    noFill(); const alpha = 220*(1-t);
     stroke(red(this.col),green(this.col),blue(this.col), alpha);
     strokeWeight(1.5*(1-t));
     for (let i=0;i<this.rings;i++){
       const rr = this.baseR + this.spread*i * k;
       circle(this.x, this.y, rr*2);
     }
-    this.life += deltaTime;
-    return t < 1;
+    this.life += deltaTime; return t < 1;
   }
 }
-
-// COMET (streaking dot with trail)
 class Comet {
   constructor(x,y,impact,col){
     this.x=x; this.y=y; this.col=col; this.life=0;
-    const sp = 2.2 + impact*0.18;
-    const a = random(TWO_PI);
+    const sp = 2.2 + impact*0.18; const a = random(TWO_PI);
     this.vx = cos(a)*sp; this.vy = sin(a)*sp;
-    this.len = 18 + impact*1.6;
-    this.dur = 500 + impact*22;
+    this.len = 18 + impact*1.6; this.dur = 500 + impact*22;
   }
   draw(){
     const t = constrain(this.life/this.dur, 0, 1);
-    const px = this.x; const py = this.y;
     this.x += this.vx; this.y += this.vy;
     stroke(red(this.col),green(this.col),blue(this.col), 240*(1-t));
     strokeWeight(2*(1-t));
     line(this.x, this.y, this.x - this.vx*this.len, this.y - this.vy*this.len);
-    noStroke();
-    fill(red(this.col),green(this.col),blue(this.col), 240*(1-t));
+    noStroke(); fill(red(this.col),green(this.col),blue(this.col), 240*(1-t));
     circle(this.x, this.y, 4 + (1-t)*3);
-    this.life += deltaTime;
-    return t < 1;
+    this.life += deltaTime; return t < 1;
   }
 }
-
-// STARBURST (twinkling spokes)
 class Starburst {
   constructor(x,y,impact,col){
     this.x=x; this.y=y; this.col=col; this.life=0;
-    this.spokes = 6 + floor(random(5));
-    this.len = 16 + impact*2.8;
+    this.spokes = 6 + floor(random(5)); this.len = 16 + impact*2.8;
     this.dur = 360 + impact*14;
   }
   draw(){
-    const t = constrain(this.life/this.dur, 0, 1);
-    const k = easeOutQuad(t);
+    const t = constrain(this.life/this.dur, 0, 1), k = easeOutQuad(t);
     stroke(red(this.col),green(this.col),blue(this.col), 230*(1-t));
     strokeWeight(2*(1-t));
     for (let i=0;i<this.spokes;i++){
-      const a = (TWO_PI/this.spokes)*i;
-      const r = this.len*(1-k);
+      const a = (TWO_PI/this.spokes)*i, r = this.len*(1-k);
       line(this.x, this.y, this.x + cos(a)*r, this.y + sin(a)*r);
     }
-    this.life += deltaTime;
-    return t < 1;
+    this.life += deltaTime; return t < 1;
   }
 }
-
-// SWEEP (soft arc sweep)
 class Sweep {
   constructor(x,y,impact,col){
     this.x=x; this.y=y; this.col=col; this.life=0;
-    this.rad = 30 + impact*5;
-    this.span = PI * (0.6 + random(0.8));
-    this.rot = random(TWO_PI);
-    this.dur = 420 + impact*16;
+    this.rad = 30 + impact*5; this.span = PI * (0.6 + random(0.8));
+    this.rot = random(TWO_PI); this.dur = 420 + impact*16;
   }
   draw(){
-    const t = constrain(this.life/this.dur, 0, 1);
-    const k = easeOutQuad(t);
+    const t = constrain(this.life/this.dur, 0, 1), k = easeOutQuad(t);
     noFill();
     stroke(red(this.col),green(this.col),blue(this.col), 200*(1-t));
     strokeWeight(6*(1-t));
-    arc(this.x, this.y, this.rad*2*(1+k), this.rad*2*(1+k), this.rot, this.rot + this.span*(1-k));
-    this.life += deltaTime;
-    return t < 1;
+    arc(this.x, this.y, this.rad*2*(1+k), this.rad*2*(1+k),
+        this.rot, this.rot + this.span*(1-k));
+    this.life += deltaTime; return t < 1;
   }
 }
 
 function spawnVisuals(x,y,impact){
-  // choose 3–7 effects depending on impact
   const count = 3 + floor(map(impact,0,12,0,4,true));
   const choices = [Ring, Confetti, Rays, Blob, Spark, TriBurst, WaveRing, Comet, Starburst, Sweep];
   for (let i=0;i<count;i++){
@@ -347,7 +300,7 @@ function spawnVisuals(x,y,impact){
   if (animations.length > MAX_ANIMS) animations.splice(0, animations.length - MAX_ANIMS);
 }
 
-// --- background pulse painter ---
+// ================== BG PULSE ====================
 function drawBackgroundPulse() {
   if (pulse <= 0.001) return;
 
@@ -371,34 +324,39 @@ function drawBackgroundPulse() {
   pulse *= pulseDecay;
 }
 
-// ===== Flick impulse via devicemotion =====
-let pendingImpulseX = 0;       // accumulated impulse to apply next frame
-const FLICK_THRESH = 7.0;      // m/s^2 threshold to count as a flick
-const FLICK_GAIN   = 0.35;     // scales how strong the flick becomes
-const FLICK_COOLDOWN = 220;    // ms between flicks
+// ================== FLICK IMPULSE (devicemotion) =====
+let pendingImpulseX = 0;       // applied next frame
+const FLICK_THRESH = 7.0;      // m/s^2 to count as flick
+const FLICK_GAIN   = 0.35;     // strength of flick
+const FLICK_COOLDOWN = 220;    // ms
 let lastFlickAt = 0;
-const FLICK_SIGN = 1;          // flip to -1 if direction feels inverted
+const FLICK_SIGN = 1;          // flip to -1 if inverted
 
+// ================== SETUP & PERMISSIONS =========
 function setup() {
   createCanvas(windowWidth, windowHeight);
-  cx = width / 2;
-  cy = height / 2;
-  ballColor = color(0);
-  bgColor = color(255);
+  cx = width / 2; cy = height / 2;
+  ballColor = color(0); bgColor = color(255);
 
-  btn = document.getElementById("btn");
-  hint = document.getElementById("hint");
+  // UI
+  panel     = document.getElementById("panel");
+  controls  = document.getElementById("controls");
+  btn       = document.getElementById("btn");
+  hint      = document.getElementById("hint");
+  stopBtn   = document.getElementById("stop");
+  resumeBtn = document.getElementById("resume");
 
   const needsPermission =
     typeof DeviceOrientationEvent !== "undefined" &&
     typeof DeviceOrientationEvent.requestPermission === "function";
 
   if (needsPermission) {
-    btn.hidden = false;
-    hint.hidden = false;
+    panel.hidden = false;                        // show centered enable card
     btn.addEventListener("click", requestAccess, { once: true });
   } else {
     permissionGranted = true;
+    controls.hidden = false;
+    wireControlButtons();
   }
 }
 
@@ -414,39 +372,72 @@ async function requestAccess() {
     }
     if (o === "granted" || m === "granted") {
       permissionGranted = true;
-      await initAudioAndLoad(); // in gesture
+      await initAudioAndLoad(); // keep inside user gesture
 
-      // Attach devicemotion listener for flicks
+      // devicemotion for flicks
       window.addEventListener('devicemotion', (e) => {
         if (!e || !e.accelerationIncludingGravity) return;
-        const ax = e.accelerationIncludingGravity.x || 0; // left/right accel (m/s^2)
-
+        const ax = e.accelerationIncludingGravity.x || 0;
         const now = Date.now();
         if (Math.abs(ax) > FLICK_THRESH && (now - lastFlickAt) > FLICK_COOLDOWN) {
           pendingImpulseX += FLICK_SIGN * ax * FLICK_GAIN;
           lastFlickAt = now;
         }
       }, true);
+
+      // UI transitions
+      panel.hidden = true;
+      controls.hidden = false;
+      wireControlButtons();
     }
   } catch (e) {
     // ignore
   } finally {
-    btn.hidden = true;
-    hint.hidden = true;
+    if (btn) btn.disabled = true; // prevent double-tap
   }
 }
 
+function wireControlButtons() {
+  if (!stopBtn || !resumeBtn) return;
+
+  stopBtn.onclick = async () => {
+    running = false;
+    stopBtn.hidden = true;
+    resumeBtn.hidden = false;
+    try { if (AC && AC.state === "running") await AC.suspend(); } catch(_) {}
+  };
+
+  resumeBtn.onclick = async () => {
+    running = true;
+    resumeBtn.hidden = true;
+    stopBtn.hidden = false;
+    try { if (AC && AC.state !== "running") await AC.resume(); } catch(_) {}
+  };
+
+  // initial:
+  stopBtn.hidden = !permissionGranted ? true : false;
+  resumeBtn.hidden = true;
+}
+
+// ================== DRAW LOOP ===================
 function draw() {
   background(bgColor);
   drawBackgroundPulse();
 
-  // draw & prune animations
+  // draw & prune animations (kept animating even if paused)
   for (let i=animations.length-1;i>=0;i--){
     if (!animations[i].draw()) animations.splice(i,1);
   }
 
   if (!permissionGranted) {
-    noFill(); stroke(0); rect(16, 16, 240, 60, 12);
+    // draw a small frame to hint UI is waiting
+    noFill(); stroke(255); rect(16, 16, 260, 70, 12);
+    return;
+  }
+
+  // if paused: render ball only (no physics)
+  if (!running) {
+    noStroke(); fill(ballColor); ellipse(cx, cy, ballSize);
     return;
   }
 
@@ -457,17 +448,15 @@ function draw() {
   vx += dx * accel;
   vy += dy * accel;
 
-  // apply any flick impulse captured from devicemotion
+  // apply flick impulse captured from devicemotion
   if (pendingImpulseX !== 0) {
     vx += pendingImpulseX;
     pendingImpulseX = 0;
   }
 
   // damping & integrate
-  vx *= damping;
-  vy *= damping;
-  cx += vx;
-  cy += vy;
+  vx *= damping; vy *= damping;
+  cx += vx;      cy += vy;
 
   const r = ballSize / 2;
   let collided = false;
@@ -485,7 +474,7 @@ function draw() {
     // occasionally switch palette
     if (random() < 0.25) paletteIdx = (paletteIdx + 1) % palettes.length;
 
-    // pick two different random colors (ball/bg) from current palette
+    // choose two different random colors from current palette
     const palette = palettes[paletteIdx];
     let newBall = color(random(palette));
     let newBg   = color(random(palette));
@@ -504,11 +493,7 @@ function draw() {
     spawnVisuals(cx, cy, impact);
   }
 
-  noStroke();
-  fill(ballColor);
-  ellipse(cx, cy, ballSize);
+  noStroke(); fill(ballColor); ellipse(cx, cy, ballSize);
 }
 
-function windowResized() {
-  resizeCanvas(windowWidth, windowHeight);
-}
+function windowResized() { resizeCanvas(windowWidth, windowHeight); }
