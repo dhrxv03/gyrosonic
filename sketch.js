@@ -11,7 +11,7 @@ let ballSize = 80;
 let panel, controls, btn, hint, stopBtn, resumeBtn;
 
 // ================== PHYSICS =====================
-const accel = 0.15;             // tilt -> accel
+const accel = 0.25;             // tilt -> accel
 const damping = 0.985;          // friction
 const restitution = 0.75;       // bounce energy
 
