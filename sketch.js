@@ -361,9 +361,9 @@ function setup() {
 }
 
 async function requestAccess() {
-  // Immediately hide button + message for a clean feel
-  if (btn) btn.hidden = true;
-  if (hint) { hint.textContent = "Requesting permission… If nothing happens, try again."; }
+  // Immediately hide button to avoid double taps; show a temporary hint
+  if (btn) { btn.hidden = true; btn.disabled = true; }
+  if (hint) { hint.hidden = false; hint.textContent = "Requesting permission… If nothing happens, try again."; }
 
   try {
     const o = (typeof DeviceOrientationEvent !== "undefined" &&
@@ -376,15 +376,14 @@ async function requestAccess() {
         typeof DeviceMotionEvent.requestPermission === "function") {
       m = await DeviceMotionEvent.requestPermission();
     } else {
-      // if no API, treat as granted for non-iOS
-      m = "granted";
+      m = "granted"; // non-iOS
     }
 
     if (o === "granted" || m === "granted") {
       permissionGranted = true;
-      await initAudioAndLoad(); // keep inside gesture
+      await initAudioAndLoad();
 
-      // devicemotion for flicks (keep your existing listener if already present)
+      // Attach devicemotion for flicks (keep as you had)
       window.addEventListener('devicemotion', (e) => {
         if (!e || !e.accelerationIncludingGravity) return;
         const ax = e.accelerationIncludingGravity.x || 0;
@@ -395,24 +394,24 @@ async function requestAccess() {
         }
       }, true);
 
-      // Success: hide the whole panel, show controls
-      if (panel) panel.hidden = true;
-      if (controls) controls.hidden = false;
+      // ✅ Clean up UI on success
+      if (hint) { hint.textContent = ""; hint.hidden = true; }
+      if (btn)  { btn.hidden = true; }
+      if (panel){ panel.hidden = true; panel.style.display = "none"; } // belt & suspenders
+      if (controls) { controls.hidden = false; }
       wireControlButtons();
       return;
     }
 
-    // If not granted, fall through to the finally block to restore UI
+    // fallthrough to finally if not granted
   } catch (_) {
     // ignore
   } finally {
     if (!permissionGranted) {
-      // Bring back the button so the user can try again
-      if (btn) { btn.hidden = false; btn.disabled = false; }
-      if (hint) { hint.textContent = "Permission was not granted. Tap the button again."; }
-    } else {
-      // If granted but we reached finally, make sure panel is gone
-      if (panel) panel.hidden = true;
+      // Show retry UI
+      if (btn)  { btn.hidden = false; btn.disabled = false; }
+      if (hint) { hint.hidden = false; hint.textContent = "Permission was not granted. Tap the button again."; }
+      if (panel){ panel.hidden = false; panel.style.display = ""; }
     }
   }
 }
