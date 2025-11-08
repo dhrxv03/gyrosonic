@@ -75,7 +75,7 @@ function playCollisionSound(speed) {
 
 // ---------- Patatap-style animations ----------
 const animations = [];
-const MAX_ANIMS = 120;
+const MAX_ANIMS = 160;
 
 const palettes = [
   ["#00D1B2","#14FFEC","#00A6FB","#3C91E6","#1B2CC1"],
@@ -190,11 +190,157 @@ class Blob {
   }
 }
 
+// --- NEW EFFECTS ---
+
+// SPARK (glow particles)
+class Spark {
+  constructor(x,y,impact,col){
+    this.x=x; this.y=y; this.col=col; this.life=0;
+    const sp = 1.5 + impact*0.15;
+    this.vx = random(-sp, sp);
+    this.vy = random(-sp, sp);
+    this.size = random(2,4) + impact*0.1;
+    this.dur = 280 + impact*10;
+  }
+  draw(){
+    const t = constrain(this.life/this.dur, 0, 1);
+    this.x += this.vx; this.y += this.vy;
+    noStroke();
+    fill(red(this.col),green(this.col),blue(this.col), 240*(1-t));
+    circle(this.x, this.y, this.size*(1-t*0.5));
+    this.life += deltaTime;
+    return t < 1;
+  }
+}
+
+// TRIBURST (flying triangles)
+class TriBurst {
+  constructor(x,y,impact,col){
+    this.x=x; this.y=y; this.col=col; this.life=0;
+    const sp = 2 + impact*0.2;
+    this.vx = random(-sp, sp);
+    this.vy = random(-sp, sp);
+    this.rot = random(TWO_PI);
+    this.vr  = random(-0.15,0.15);
+    this.size= 8 + impact*0.8;
+    this.dur = 420 + impact*18;
+  }
+  draw(){
+    const t = constrain(this.life/this.dur, 0, 1);
+    this.x += this.vx; this.y += this.vy; this.rot += this.vr;
+    push();
+    translate(this.x, this.y);
+    rotate(this.rot);
+    noStroke();
+    fill(red(this.col),green(this.col),blue(this.col), 230*(1-t));
+    triangle(-this.size, this.size*0.6, this.size, this.size*0.6, 0, -this.size);
+    pop();
+    this.life += deltaTime;
+    return t < 1;
+  }
+}
+
+// WAVERING (multi concentric rings)
+class WaveRing {
+  constructor(x,y,impact,col){
+    this.x=x; this.y=y; this.col=col; this.life=0;
+    this.rings = 3 + floor(random(3));
+    this.baseR = 14 + impact*2;
+    this.spread = 16 + impact*2.5;
+    this.dur = 420 + impact*20;
+  }
+  draw(){
+    const t = constrain(this.life/this.dur, 0, 1);
+    const k = easeOutExpo(t);
+    noFill();
+    const alpha = 220*(1-t);
+    stroke(red(this.col),green(this.col),blue(this.col), alpha);
+    strokeWeight(1.5*(1-t));
+    for (let i=0;i<this.rings;i++){
+      const rr = this.baseR + this.spread*i * k;
+      circle(this.x, this.y, rr*2);
+    }
+    this.life += deltaTime;
+    return t < 1;
+  }
+}
+
+// COMET (streaking dot with trail)
+class Comet {
+  constructor(x,y,impact,col){
+    this.x=x; this.y=y; this.col=col; this.life=0;
+    const sp = 2.2 + impact*0.18;
+    const a = random(TWO_PI);
+    this.vx = cos(a)*sp; this.vy = sin(a)*sp;
+    this.len = 18 + impact*1.6;
+    this.dur = 500 + impact*22;
+  }
+  draw(){
+    const t = constrain(this.life/this.dur, 0, 1);
+    const px = this.x; const py = this.y;
+    this.x += this.vx; this.y += this.vy;
+    stroke(red(this.col),green(this.col),blue(this.col), 240*(1-t));
+    strokeWeight(2*(1-t));
+    line(this.x, this.y, this.x - this.vx*this.len, this.y - this.vy*this.len);
+    noStroke();
+    fill(red(this.col),green(this.col),blue(this.col), 240*(1-t));
+    circle(this.x, this.y, 4 + (1-t)*3);
+    this.life += deltaTime;
+    return t < 1;
+  }
+}
+
+// STARBURST (twinkling spokes)
+class Starburst {
+  constructor(x,y,impact,col){
+    this.x=x; this.y=y; this.col=col; this.life=0;
+    this.spokes = 6 + floor(random(5));
+    this.len = 16 + impact*2.8;
+    this.dur = 360 + impact*14;
+  }
+  draw(){
+    const t = constrain(this.life/this.dur, 0, 1);
+    const k = easeOutQuad(t);
+    stroke(red(this.col),green(this.col),blue(this.col), 230*(1-t));
+    strokeWeight(2*(1-t));
+    for (let i=0;i<this.spokes;i++){
+      const a = (TWO_PI/this.spokes)*i;
+      const r = this.len*(1-k);
+      line(this.x, this.y, this.x + cos(a)*r, this.y + sin(a)*r);
+    }
+    this.life += deltaTime;
+    return t < 1;
+  }
+}
+
+// SWEEP (soft arc sweep)
+class Sweep {
+  constructor(x,y,impact,col){
+    this.x=x; this.y=y; this.col=col; this.life=0;
+    this.rad = 30 + impact*5;
+    this.span = PI * (0.6 + random(0.8));
+    this.rot = random(TWO_PI);
+    this.dur = 420 + impact*16;
+  }
+  draw(){
+    const t = constrain(this.life/this.dur, 0, 1);
+    const k = easeOutQuad(t);
+    noFill();
+    stroke(red(this.col),green(this.col),blue(this.col), 200*(1-t));
+    strokeWeight(6*(1-t));
+    arc(this.x, this.y, this.rad*2*(1+k), this.rad*2*(1+k), this.rot, this.rot + this.span*(1-k));
+    this.life += deltaTime;
+    return t < 1;
+  }
+}
+
 function spawnVisuals(x,y,impact){
-  const count = 2 + floor(map(impact,0,12,0,4,true));
+  // choose 3–7 effects depending on impact
+  const count = 3 + floor(map(impact,0,12,0,4,true));
+  const choices = [Ring, Confetti, Rays, Blob, Spark, TriBurst, WaveRing, Comet, Starburst, Sweep];
   for (let i=0;i<count;i++){
     const col = randCol();
-    const K = random([Ring, Confetti, Rays, Blob]);
+    const K = random(choices);
     animations.push(new K(x,y,impact,col));
   }
   if (random() < 0.2) paletteIdx = (paletteIdx + 1) % palettes.length;
@@ -226,14 +372,12 @@ function drawBackgroundPulse() {
 }
 
 // ===== Flick impulse via devicemotion =====
-let haveDM = false;
 let pendingImpulseX = 0;       // accumulated impulse to apply next frame
 const FLICK_THRESH = 7.0;      // m/s^2 threshold to count as a flick
 const FLICK_GAIN   = 0.35;     // scales how strong the flick becomes
 const FLICK_COOLDOWN = 220;    // ms between flicks
 let lastFlickAt = 0;
-// If your axis feels inverted, flip sign to -1
-const FLICK_SIGN = 1;
+const FLICK_SIGN = 1;          // flip to -1 if direction feels inverted
 
 function setup() {
   createCanvas(windowWidth, windowHeight);
@@ -255,7 +399,6 @@ function setup() {
     btn.addEventListener("click", requestAccess, { once: true });
   } else {
     permissionGranted = true;
-    // we keep audio init tied to a gesture; leave it off here
   }
 }
 
@@ -277,12 +420,9 @@ async function requestAccess() {
       window.addEventListener('devicemotion', (e) => {
         if (!e || !e.accelerationIncludingGravity) return;
         const ax = e.accelerationIncludingGravity.x || 0; // left/right accel (m/s^2)
-        haveDM = true;
 
-        // detect sharp spikes as flicks
         const now = Date.now();
         if (Math.abs(ax) > FLICK_THRESH && (now - lastFlickAt) > FLICK_COOLDOWN) {
-          // add an impulse to be applied next frame
           pendingImpulseX += FLICK_SIGN * ax * FLICK_GAIN;
           lastFlickAt = now;
         }
@@ -353,9 +493,7 @@ function draw() {
       red(newBall) === red(newBg) &&
       green(newBall) === green(newBg) &&
       blue(newBall) === blue(newBg)
-    ) {
-      newBg = color(random(palette));
-    }
+    ) { newBg = color(random(palette)); }
     ballColor = newBall;
     bgColor   = newBg;
 
